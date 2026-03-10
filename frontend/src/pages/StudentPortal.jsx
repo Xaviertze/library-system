@@ -73,7 +73,7 @@ export default function StudentPortal() {
           </h2>
           <p className="page-subtitle">
             {activeTab === 'browse' && 'Discover and borrow from our collection'}
-            {activeTab === 'recommendations' && 'Based on your reading history and popular titles'}
+            {activeTab === 'recommendations' && 'Top 3 most borrowed books in our collection'}
             {activeTab === 'my-books' && 'Track your current and past borrowings'}
           </p>
         </div>
@@ -158,31 +158,31 @@ export default function StudentPortal() {
               <div className="empty-state">
                 <div className="empty-icon">🌟</div>
                 <h3>No recommendations yet</h3>
-                <p>Start borrowing books and we'll suggest similar ones you might enjoy</p>
+                <p>No books have been borrowed yet. Check back soon!</p>
               </div>
             ) : (
               <div className="card-grid">
                 {recommendations.map(book => (
                   <div key={book.id} className="book-card" onClick={() => setSelectedBook(book)}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                      ⭐ Recommended
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+                      ⭐ Top Borrowed
                     </div>
                     <div className="book-title">{book.title}</div>
                     <div className="book-author">by {book.author_name}</div>
-                    <div className="book-meta">
-                      {book.genre?.split(',').slice(0, 2).map(g => (
-                        <span key={g} className="badge badge-genre">{g.trim()}</span>
-                      ))}
+                    {book.publish_date && (
+                      <div style={{ fontSize: '0.78rem', color: 'var(--slate)', marginTop: 2 }}>
+                        📅 Published: {new Date(book.publish_date).toLocaleDateString()}
+                      </div>
+                    )}
+                    <div className="book-meta" style={{ marginTop: 8 }}>
                       <span className={`badge ${book.availability === 'available' ? 'badge-available' : 'badge-unavailable'}`}>
                         {book.availability === 'available' ? '● Available' : '● Borrowed'}
                       </span>
                     </div>
                     <p className="book-description">{book.description}</p>
-                    {book.times_borrowed > 0 && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--slate)' }}>
-                        📖 Borrowed {book.times_borrowed} time{book.times_borrowed !== 1 ? 's' : ''}
-                      </div>
-                    )}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--slate)', marginTop: 4 }}>
+                      📖 Borrowed {book.times_borrowed} time{book.times_borrowed !== 1 ? 's' : ''}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -67,60 +67,19 @@ router.get('/', authenticate, (req, res) => {
 
 /**
  * GET /api/books/recommendations
- * Get book recommendations based on borrowing history and popularity
+ * Get the top 3 most borrowed approved books
  */
 router.get('/recommendations', authenticate, authorize('student', 'staff'), (req, res) => {
-  const userId = req.user.id;
+  const books = db.prepare(`
+    SELECT b.id, b.title, b.author_name, b.genre, b.description,
+           b.availability, b.publish_date, b.times_borrowed
+    FROM books b
+    WHERE b.status = 'approved'
+    ORDER BY b.times_borrowed DESC
+    LIMIT 3
+  `).all();
 
-  // Get genres from user's borrowing history
-  const userGenres = db.prepare(`
-    SELECT DISTINCT b.genre
-    FROM borrow_records br
-    JOIN books b ON br.book_id = b.id
-    WHERE br.user_id = ?
-  `).all(userId);
-
-  let recommended = [];
-
-  if (userGenres.length > 0) {
-    // Recommend books in genres the user has read before
-    const genreList = userGenres.map(g => g.genre).join(',');
-    recommended = db.prepare(`
-      SELECT b.id, b.title, b.author_name, b.genre, b.description,
-             b.availability, b.publish_date, b.times_borrowed
-      FROM books b
-      WHERE b.status = 'approved'
-        AND b.id NOT IN (
-          SELECT book_id FROM borrow_records WHERE user_id = ?
-        )
-        AND (${userGenres.map(() => "b.genre LIKE ?").join(' OR ')})
-      ORDER BY b.times_borrowed DESC
-      LIMIT 6
-    `).all(userId, ...userGenres.map(g => `%${g.genre.split(',')[0]}%`));
-  }
-
-  // Fill remainder with most popular books
-  if (recommended.length < 6) {
-    const excluded = recommended.map(b => b.id);
-    const excludeClause = excluded.length > 0 
-      ? `AND b.id NOT IN (${excluded.map(() => '?').join(',')})` 
-      : '';
-    
-    const popular = db.prepare(`
-      SELECT b.id, b.title, b.author_name, b.genre, b.description,
-             b.availability, b.publish_date, b.times_borrowed
-      FROM books b
-      WHERE b.status = 'approved'
-        AND b.id NOT IN (SELECT book_id FROM borrow_records WHERE user_id = ?)
-        ${excludeClause}
-      ORDER BY b.times_borrowed DESC
-      LIMIT ?
-    `).all(userId, ...excluded, 6 - recommended.length);
-
-    recommended = [...recommended, ...popular];
-  }
-
-  res.json(recommended);
+  res.json(books);
 });
 
 /**
@@ -267,9 +226,9 @@ router.post('/submit', authenticate, authorize('author'), upload.single('book_fi
 
 /**
  * POST /api/books/draft
- * Auto-save book submission draft
+ * Save book submission draft (text-only auto-save or manual save with optional file)
  */
-router.post('/draft', authenticate, authorize('author'), (req, res) => {
+router.post('/draft', authenticate, authorize('author'), upload.single('book_file'), (req, res) => {
   const { title, genre, description, draft_id } = req.body;
   const authorId = req.user.id;
   const author = db.prepare('SELECT full_name FROM users WHERE id = ?').get(authorId);
@@ -278,17 +237,43 @@ router.post('/draft', authenticate, authorize('author'), (req, res) => {
 
   if (draft_id) {
     // Update existing draft
-    db.prepare('UPDATE books SET draft_data = ? WHERE id = ? AND author_id = ?')
-      .run(draftData, draft_id, authorId);
+    if (req.file) {
+      db.prepare(`
+        UPDATE books
+        SET draft_data = ?, title = ?, genre = ?, description = ?,
+            file_path = ?, file_name = ?
+        WHERE id = ? AND author_id = ?
+      `).run(
+        draftData, title || 'Untitled Draft', genre || '', description || '',
+        req.file.path, req.file.originalname, draft_id, authorId
+      );
+    } else {
+      db.prepare(`
+        UPDATE books
+        SET draft_data = ?, title = ?, genre = ?, description = ?
+        WHERE id = ? AND author_id = ?
+      `).run(draftData, title || 'Untitled Draft', genre || '', description || '', draft_id, authorId);
+    }
     return res.json({ message: 'Draft saved', draft_id });
   }
 
   // Create new draft record
   const draftId = uuidv4();
   db.prepare(`
-    INSERT INTO books (id, title, author_id, author_name, genre, description, status, draft_data)
-    VALUES (?, ?, ?, ?, ?, ?, 'draft', ?)
-  `).run(draftId, title || 'Untitled Draft', authorId, author.full_name, genre || '', description || '', draftData);
+    INSERT INTO books
+      (id, title, author_id, author_name, genre, description, status, draft_data, file_path, file_name)
+    VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
+  `).run(
+    draftId,
+    title || 'Untitled Draft',
+    authorId,
+    author.full_name,
+    genre || '',
+    description || '',
+    draftData,
+    req.file ? req.file.path : null,
+    req.file ? req.file.originalname : null
+  );
 
   res.json({ message: 'Draft saved', draft_id: draftId });
 });

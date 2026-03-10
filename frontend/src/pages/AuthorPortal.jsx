@@ -37,6 +37,7 @@ export default function AuthorPortal() {
   const [dragOver, setDragOver] = useState(false);
   const [draftId, setDraftId] = useState(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState('');
+  const [draftSaving, setDraftSaving] = useState(false);
   const autoSaveTimer = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -60,11 +61,12 @@ export default function AuthorPortal() {
     autoSaveTimer.current = setTimeout(async () => {
       try {
         setAutoSaveStatus('Saving draft…');
-        const { data } = await api.post('/books/draft', {
-          ...form,
-          genre: form.genre.join(', '),
-          draft_id: draftId
-        });
+        const fd = new FormData();
+        fd.append('title', form.title);
+        fd.append('genre', form.genre.join(', '));
+        fd.append('description', form.description);
+        if (draftId) fd.append('draft_id', draftId);
+        const { data } = await api.post('/books/draft', fd);
         setDraftId(data.draft_id);
         setAutoSaveStatus('Draft saved ✓');
         setTimeout(() => setAutoSaveStatus(''), 2000);
@@ -93,6 +95,29 @@ export default function AuthorPortal() {
       setDrafts(data);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    setDraftSaving(true);
+    setAutoSaveStatus('Saving draft…');
+    clearTimeout(autoSaveTimer.current);
+    try {
+      const fd = new FormData();
+      fd.append('title', form.title);
+      fd.append('genre', form.genre.join(', '));
+      fd.append('description', form.description);
+      if (draftId) fd.append('draft_id', draftId);
+      if (file) fd.append('book_file', file);
+      const { data } = await api.post('/books/draft', fd);
+      setDraftId(data.draft_id);
+      setAutoSaveStatus('Draft saved ✓');
+      setTimeout(() => setAutoSaveStatus(''), 2000);
+    } catch {
+      setAutoSaveStatus('Save failed');
+      setTimeout(() => setAutoSaveStatus(''), 2000);
+    } finally {
+      setDraftSaving(false);
     }
   };
 
@@ -278,9 +303,19 @@ export default function AuthorPortal() {
                 {errors.file && <span className="form-error">⚠ {errors.file}</span>}
               </div>
 
-              <button className="btn btn-primary btn-lg" type="submit" disabled={loading}>
-                {loading ? 'Submitting…' : '📤 Submit for Review'}
-              </button>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <button className="btn btn-primary btn-lg" type="submit" disabled={loading}>
+                  {loading ? 'Submitting…' : '📤 Submit for Review'}
+                </button>
+                <button
+                  className="btn btn-secondary btn-lg"
+                  type="button"
+                  disabled={draftSaving}
+                  onClick={handleSaveDraft}
+                >
+                  {draftSaving ? 'Saving…' : '💾 Save Draft'}
+                </button>
+              </div>
             </form>
           </div>
         )}
