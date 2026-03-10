@@ -27,28 +27,14 @@ if %ERRORLEVEL%==0 (
     start "BiblioVault - Frontend" cmd /k "cd /d %~dp0frontend && npm run dev"
 )
 
-:: Ask if the user wants to expose the frontend via ngrok
-echo.
-set /p NGROK_CHOICE="Start ngrok tunnel for frontend (port 3000)? [y/N]: "
-if /i "%NGROK_CHOICE%"=="y" (
-    where ngrok >nul 2>&1
-    if %ERRORLEVEL%==0 (
-        echo [3/3] Starting ngrok tunnel on port 3000...
-        start "BiblioVault - ngrok" cmd /k "ngrok http 3000"
-    ) else (
-        echo [WARN] ngrok not found in PATH. Download it from https://ngrok.com/download
-        echo        and add it to your PATH, then re-run start.bat.
-    )
-)
-
 echo.
 echo ============================================
 echo   Both servers are starting up.
 echo   Backend  : http://localhost:5000
 echo   Frontend : http://localhost:3000
 echo.
-echo   Closing a server window stops that server.
-echo   Run stop.bat to stop everything at once.
+echo   Closing either server window will stop
+echo   that server. Run stop.bat to stop both.
 echo ============================================
 echo.
 pause
