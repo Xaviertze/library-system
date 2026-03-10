@@ -52,6 +52,26 @@ export default function AuthorPortal() {
     if (activeTab === 'drafts') loadDrafts();
   }, [activeTab]);
 
+  // Restore in-progress publish form from localStorage on page load
+  useEffect(() => {
+    const saved = localStorage.getItem('author_publish_draft');
+    if (!saved) return;
+    try {
+      const { savedForm, savedDraftId } = JSON.parse(saved);
+      if (savedForm) setForm(savedForm);
+      if (savedDraftId) setDraftId(savedDraftId);
+    } catch {}
+  }, []);
+
+  // Persist publish form + draftId to localStorage whenever they change
+  useEffect(() => {
+    if (!form.title && !form.description && !draftId) {
+      localStorage.removeItem('author_publish_draft');
+      return;
+    }
+    localStorage.setItem('author_publish_draft', JSON.stringify({ savedForm: form, savedDraftId: draftId }));
+  }, [form, draftId]);
+
   // Auto-save draft when form changes (debounced 3s)
   useEffect(() => {
     if (activeTab !== 'publish') return;
@@ -163,6 +183,7 @@ export default function AuthorPortal() {
       setForm({ title: '', genre: [], description: '' });
       setFile(null);
       setDraftId(null);
+      localStorage.removeItem('author_publish_draft');
     } catch (err) {
       setErrors(err.response?.data?.errors || { general: 'Submission failed' });
     } finally {
@@ -173,12 +194,14 @@ export default function AuthorPortal() {
   const loadDraft = (draft) => {
     try {
       const data = JSON.parse(draft.draft_data || '{}');
-      setForm({
+      const restoredForm = {
         title: data.title || draft.title || '',
         genre: (data.genre || '').split(',').map(g => g.trim()).filter(Boolean),
         description: data.description || '',
-      });
+      };
+      setForm(restoredForm);
       setDraftId(draft.id);
+      localStorage.setItem('author_publish_draft', JSON.stringify({ savedForm: restoredForm, savedDraftId: draft.id }));
       setActiveTab('publish');
     } catch { }
   };

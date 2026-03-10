@@ -44,7 +44,7 @@ function initializeDatabase() {
       file_path TEXT,               -- Path to uploaded book file
       file_name TEXT,               -- Original filename
       status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending', 'approved', 'rejected')),
+        CHECK(status IN ('pending', 'approved', 'rejected', 'draft')),
       availability TEXT NOT NULL DEFAULT 'available'
         CHECK(availability IN ('available', 'borrowed')),
       publish_date DATETIME,        -- Set when librarian approves
@@ -69,7 +69,53 @@ function initializeDatabase() {
     );
   `);
 
-  console.log('✅ Database initialized successfully');
+  // Migrate existing database if the books table was created without 'draft' in its constraint
+  migrateAddDraftStatus();
+
+  console.log('\u2705 Database initialized successfully');
+}
+
+/**
+ * Migration: recreate books table to include 'draft' in the status CHECK constraint.
+ * Only runs when the existing table is missing the 'draft' value.
+ */
+function migrateAddDraftStatus() {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='books'"
+  ).get();
+
+  // Table doesn't exist yet, or already has 'draft' — nothing to do
+  if (!row || row.sql.includes("'draft'")) return;
+
+  const migrate = db.transaction(() => {
+    db.prepare(`
+      CREATE TABLE books_v2 (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        author_id TEXT NOT NULL,
+        author_name TEXT NOT NULL,
+        genre TEXT NOT NULL,
+        description TEXT NOT NULL,
+        file_path TEXT,
+        file_name TEXT,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK(status IN ('pending', 'approved', 'rejected', 'draft')),
+        availability TEXT NOT NULL DEFAULT 'available'
+          CHECK(availability IN ('available', 'borrowed')),
+        publish_date DATETIME,
+        submitted_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+        draft_data TEXT,
+        times_borrowed INTEGER DEFAULT 0,
+        FOREIGN KEY (author_id) REFERENCES users(id)
+      )
+    `).run();
+    db.prepare('INSERT INTO books_v2 SELECT * FROM books').run();
+    db.prepare('DROP TABLE books').run();
+    db.prepare('ALTER TABLE books_v2 RENAME TO books').run();
+  });
+
+  migrate();
+  console.log('\u2705 Migrated books table: added draft status support');
 }
 
 initializeDatabase();
