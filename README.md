@@ -60,49 +60,86 @@ library-system/
 - **Node.js** v18 or higher
 - **npm** v8 or higher
 
-### 1. Clone or extract the project
+### 1. Install dependencies
+
+Before running the app for the first time, install dependencies for both the backend and frontend:
 
 ```bash
-cd library-system
+cd backend && npm install
+cd ../frontend && npm install
 ```
 
-### 2. Set up the Backend
+### 2. Configure environment (first run only)
 
 ```bash
 cd backend
+copy .env.example .env
+```
 
-# Install dependencies
-npm install
+Open `backend/.env` and set a value for `JWT_SECRET` if desired. The defaults work fine for local development.
 
-# Create environment file
-cp .env.example .env
+---
 
-# (Optional) Edit .env to customize JWT_SECRET
-nano .env
+## ▶️ Running the App (Windows — Batch Files)
 
-# Start the API server
+Three `.bat` files in the project root handle everything. **Double-click or run them from any terminal.**
+
+### `start.bat` — Start both servers
+
+```bat
+start.bat
+```
+
+- Launches the **backend** (`http://localhost:5000`) in its own console window titled **BiblioVault - Backend**.
+- Waits 3 seconds, then launches the **frontend** (`http://localhost:3000`) in a second window titled **BiblioVault - Frontend**.
+- Warns instead of double-starting if a port is already in use.
+- Open **http://localhost:3000** in your browser once both windows are running.
+
+### `stop.bat` — Stop both servers
+
+```bat
+stop.bat
+```
+
+- Closes the **BiblioVault - Backend** and **BiblioVault - Frontend** console windows.
+- Also kills any remaining Node.js process still holding ports 5000 or 3000.
+
+### `status.bat` — Check whether servers are running
+
+```bat
+status.bat
+```
+
+Prints a quick status line for each server, for example:
+
+```
+[RUNNING]  Backend   http://localhost:5000
+[STOPPED]  Frontend  http://localhost:3000
+```
+
+---
+
+## 🛠️ Manual Start (alternative)
+
+If you prefer to run each server without the `.bat` files, open two terminals:
+
+**Backend:**
+
+```bash
+cd backend
 npm start
 ```
 
-The backend will start at **http://localhost:5000**
-
-The SQLite database and upload directories are created automatically on first run.
-
-### 3. Set up the Frontend
-
-Open a new terminal:
+**Frontend:**
 
 ```bash
 cd frontend
-
-# Install dependencies
-npm install
-
-# Start the development server
 npm run dev
 ```
 
-The frontend will open at **http://localhost:3000**
+Backend: **http://localhost:5000** · Frontend: **http://localhost:3000**
+
+The SQLite database and upload directories are created automatically on first run.
 
 ---
 

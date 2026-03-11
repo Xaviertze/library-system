@@ -87,35 +87,42 @@ function migrateAddDraftStatus() {
   // Table doesn't exist yet, or already has 'draft' — nothing to do
   if (!row || row.sql.includes("'draft'")) return;
 
-  const migrate = db.transaction(() => {
-    db.prepare(`
-      CREATE TABLE books_v2 (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        author_id TEXT NOT NULL,
-        author_name TEXT NOT NULL,
-        genre TEXT NOT NULL,
-        description TEXT NOT NULL,
-        file_path TEXT,
-        file_name TEXT,
-        status TEXT NOT NULL DEFAULT 'pending'
-          CHECK(status IN ('pending', 'approved', 'rejected', 'draft')),
-        availability TEXT NOT NULL DEFAULT 'available'
-          CHECK(availability IN ('available', 'borrowed')),
-        publish_date DATETIME,
-        submitted_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-        draft_data TEXT,
-        times_borrowed INTEGER DEFAULT 0,
-        FOREIGN KEY (author_id) REFERENCES users(id)
-      )
-    `).run();
-    db.prepare('INSERT INTO books_v2 SELECT * FROM books').run();
-    db.prepare('DROP TABLE books').run();
-    db.prepare('ALTER TABLE books_v2 RENAME TO books').run();
-  });
-
-  migrate();
-  console.log('\u2705 Migrated books table: added draft status support');
+  // Disable FK enforcement for the restructure — we are only changing a CHECK
+  // constraint, not any relationships, so this is safe. The pragma must be set
+  // outside of a transaction in SQLite.
+  db.pragma('foreign_keys = OFF');
+  try {
+    const migrate = db.transaction(() => {
+      db.prepare(`
+        CREATE TABLE books_v2 (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          author_id TEXT NOT NULL,
+          author_name TEXT NOT NULL,
+          genre TEXT NOT NULL,
+          description TEXT NOT NULL,
+          file_path TEXT,
+          file_name TEXT,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK(status IN ('pending', 'approved', 'rejected', 'draft')),
+          availability TEXT NOT NULL DEFAULT 'available'
+            CHECK(availability IN ('available', 'borrowed')),
+          publish_date DATETIME,
+          submitted_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+          draft_data TEXT,
+          times_borrowed INTEGER DEFAULT 0,
+          FOREIGN KEY (author_id) REFERENCES users(id)
+        )
+      `).run();
+      db.prepare('INSERT INTO books_v2 SELECT * FROM books').run();
+      db.prepare('DROP TABLE books').run();
+      db.prepare('ALTER TABLE books_v2 RENAME TO books').run();
+    });
+    migrate();
+    console.log('\u2705 Migrated books table: added draft status support');
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
 }
 
 initializeDatabase();
