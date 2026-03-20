@@ -25,6 +25,8 @@ export default function StudentPortal() {
   const [filterGenre, setFilterGenre] = useState('');
   const [filterAvail, setFilterAvail] = useState('');
   const [loading, setLoading] = useState(true);
+  const [confirmReturn, setConfirmReturn] = useState(null); // holds borrow record awaiting confirmation
+  const [returnMsg, setReturnMsg] = useState('');
 
   useEffect(() => { loadData(); }, [activeTab]);
 
@@ -48,6 +50,19 @@ export default function StudentPortal() {
 
   // Derive available genres for filter
   const genres = [...new Set(books.flatMap(b => b.genre?.split(',').map(g => g.trim()) || []))];
+
+  const handleReturn = async (bookId) => {
+    try {
+      await api.post(`/books/${bookId}/return`);
+      setReturnMsg('Book returned successfully!');
+      setConfirmReturn(null);
+      loadData();
+      setTimeout(() => setReturnMsg(''), 3000);
+    } catch (err) {
+      setReturnMsg(err.response?.data?.error || 'Failed to return book.');
+      setTimeout(() => setReturnMsg(''), 3000);
+    }
+  };
 
   // Filtered books
   const filtered = books.filter(b => {
@@ -193,6 +208,56 @@ export default function StudentPortal() {
         {/* My Borrows Tab */}
         {activeTab === 'my-books' && (
           <div>
+            {/* Success / error message */}
+            {returnMsg && (
+              <div style={{
+                padding: '10px 16px',
+                marginBottom: 16,
+                borderRadius: 6,
+                background: returnMsg.includes('success') ? 'rgba(52,211,153,0.15)' : 'rgba(239,68,68,0.15)',
+                color: returnMsg.includes('success') ? 'var(--emerald-light)' : 'var(--ruby-light)',
+                border: `1px solid ${returnMsg.includes('success') ? 'var(--emerald-light)' : 'var(--ruby-light)'}`,
+                fontSize: '0.9rem'
+              }}>
+                {returnMsg.includes('success') ? '✅ ' : '⚠ '}{returnMsg}
+              </div>
+            )}
+
+            {/* Confirmation dialog */}
+            {confirmReturn && (
+              <div style={{
+                padding: '16px',
+                marginBottom: 16,
+                borderRadius: 8,
+                background: 'var(--surface)',
+                border: '1px solid var(--gold)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                flexWrap: 'wrap'
+              }}>
+                <span style={{ color: 'var(--parchment)', flex: 1 }}>
+                  Return <strong>"{confirmReturn.title}"</strong>? This cannot be undone.
+                </span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="btn btn-primary"
+                    style={{ padding: '6px 16px', fontSize: '0.85rem' }}
+                    onClick={() => handleReturn(confirmReturn.book_id)}
+                  >
+                    Confirm Return
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 16px', fontSize: '0.85rem' }}
+                    onClick={() => setConfirmReturn(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
             {loading ? (
               <div className="empty-state"><div className="spinner" /></div>
             ) : borrows.length === 0 ? (
@@ -208,10 +273,10 @@ export default function StudentPortal() {
                     <tr>
                       <th>Book</th>
                       <th>Author</th>
-                      <th>Genre</th>
                       <th>Borrowed</th>
                       <th>Due Date</th>
                       <th>Status</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -221,9 +286,6 @@ export default function StudentPortal() {
                         <tr key={b.id}>
                           <td style={{ fontWeight: 500, color: 'var(--parchment)' }}>{b.title}</td>
                           <td>{b.author_name}</td>
-                          <td>
-                            <span className="badge badge-genre">{b.genre?.split(',')[0]?.trim()}</span>
-                          </td>
                           <td>{new Date(b.borrow_date).toLocaleDateString()}</td>
                           <td style={{ color: isOverdue ? 'var(--ruby-light)' : 'inherit' }}>
                             {new Date(b.due_date).toLocaleDateString()}
@@ -231,11 +293,22 @@ export default function StudentPortal() {
                           </td>
                           <td>
                             <span className={`badge ${
-                              b.status === 'active' && !isOverdue ? 'badge-available' : 
-                              isOverdue ? 'badge-unavailable' : 'badge-genre'
+                              b.status === 'returned' ? 'badge-genre' :
+                              isOverdue ? 'badge-unavailable' : 'badge-available'
                             }`}>
-                              {isOverdue ? 'Overdue' : b.status}
+                              {b.status === 'returned' ? 'Returned' : isOverdue ? 'Overdue' : 'Active'}
                             </span>
+                          </td>
+                          <td>
+                            {b.status === 'active' && (
+                              <button
+                                className="btn btn-secondary"
+                                style={{ padding: '4px 12px', fontSize: '0.8rem' }}
+                                onClick={() => setConfirmReturn(b)}
+                              >
+                                Return Book
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );

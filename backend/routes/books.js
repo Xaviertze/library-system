@@ -166,6 +166,47 @@ router.get('/my-borrows', authenticate, authorize('student', 'staff'), (req, res
   res.json(borrows);
 });
 
+/**
+ * POST /api/books/:id/return
+ * Return a borrowed book (students and staff only)
+ */
+router.post('/:id/return', authenticate, authorize('student', 'staff'), (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+
+  // Find the active borrow record for this book and user
+  const borrowRecord = db.prepare(`
+    SELECT br.id, br.due_date FROM borrow_records br
+    WHERE br.book_id = ? AND br.user_id = ? AND br.status = 'active'
+  `).get(id, userId);
+
+  if (!borrowRecord) {
+    return res.status(404).json({ error: 'No active borrow record found for this book' });
+  }
+
+  const returnDate = new Date().toISOString();
+
+  // Execute return in a transaction
+  const returnBook = db.transaction(() => {
+    // Update borrow record with return date and status
+    db.prepare(`
+      UPDATE borrow_records
+      SET status = 'returned', return_date = ?
+      WHERE id = ?
+    `).run(returnDate, borrowRecord.id);
+
+    // Set book back to available
+    db.prepare(`
+      UPDATE books SET availability = 'available'
+      WHERE id = ?
+    `).run(id);
+  });
+
+  returnBook();
+
+  res.json({ message: 'Book returned successfully!' });
+});
+
 /* =============================================
    AUTHOR ROUTES
    ============================================= */
