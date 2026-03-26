@@ -40,7 +40,6 @@ export default function Profile({ onClose }) {
         password: currentPassword,
       });
       setIsUnlocked(true);
-      setCurrentPassword('');
     } catch (err) {
       setPasswordError(
         err.response?.data?.error || 'Incorrect password. Please try again.'
@@ -110,11 +109,9 @@ export default function Profile({ onClose }) {
 
       setSaveSuccess('Profile updated successfully!');
       
-      // Close after a short delay
+      // Refresh page after a short delay
       setTimeout(() => {
-        setIsUnlocked(false);
-        setCurrentPassword('');
-        onClose();
+        window.location.reload();
       }, 1500);
     } catch (err) {
       setSaveError(

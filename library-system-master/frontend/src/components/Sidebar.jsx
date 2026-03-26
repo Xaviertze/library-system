@@ -52,6 +52,7 @@ export default function Sidebar({ navItems, activeTab, onTabChange }) {
               cursor: 'pointer',
               transition: 'background var(--transition)',
               flex: 1,
+              marginBottom: '12px',
             }}
             onMouseEnter={e => e.currentTarget.style.background = 'rgba(245, 240, 232, 0.12)'}
             onMouseLeave={e => e.currentTarget.style.background = 'var(--parchment-dim)'}
@@ -63,7 +64,14 @@ export default function Sidebar({ navItems, activeTab, onTabChange }) {
               <div className="user-role">{user?.role}</div>
             </div>
           </div>
-          <button className="logout-btn" onClick={logout} title="Sign out">⏻</button>
+          <button
+            className="btn btn-secondary"
+            onClick={logout}
+            style={{ width: '100%' }}
+            title="Sign out"
+          >
+            Log Out
+          </button>
         </div>
       </aside>
 
