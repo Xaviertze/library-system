@@ -6,7 +6,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database');
-const { generateToken } = require('../middleware/auth');
+const { generateToken, authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -128,6 +128,147 @@ router.post('/login', (req, res) => {
       role: user.role,
       bio: user.bio,
       employee_id: user.employee_id
+    }
+  });
+});
+
+/**
+ * POST /api/auth/verify-password
+ * Verify a user's current password (for profile unlock)
+ */
+router.post('/verify-password', (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+
+  // Fetch user from database
+  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.trim());
+
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
+  // Verify password
+  const validPassword = bcrypt.compareSync(password, user.password_hash);
+  if (!validPassword) {
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
+  res.json({ message: 'Password verified successfully' });
+});
+
+/**
+ * PUT /api/auth/profile
+ * Update user profile information
+ * Requires authentication
+ */
+router.put('/profile', authenticate, (req, res) => {
+  const { username, full_name, new_password, bio, current_password } = req.body;
+  const userId = req.user.id;
+
+  // Fetch current user from database
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  // --- Verify current password for security ---
+  if (!current_password) {
+    return res.status(400).json({ error: 'Current password is required for verification' });
+  }
+
+  const validPassword = bcrypt.compareSync(current_password, user.password_hash);
+  if (!validPassword) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+
+  // --- Input Validation ---
+  const errors = {};
+
+  if (username && username.trim().length < 3) {
+    errors.username = 'Username must be at least 3 characters';
+  } else if (username && !/^[a-zA-Z0-9_]+$/.test(username)) {
+    errors.username = 'Username can only contain letters, numbers, and underscores';
+  }
+
+  // Check username uniqueness if username is being changed
+  if (username && username.trim() !== user.username) {
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username.trim());
+    if (existing) {
+      errors.username = 'Username already taken';
+    }
+  }
+
+  if (full_name && full_name.trim().length === 0) {
+    errors.full_name = 'Full name cannot be empty';
+  }
+
+  // Validate bio for authors
+  if (user.role === 'author' && bio && bio.trim().length === 0) {
+    errors.bio = 'Bio cannot be empty if provided';
+  }
+
+  // Validate new password if provided
+  if (new_password) {
+    const passwordErrors = validatePassword(new_password);
+    if (passwordErrors.length > 0) {
+      errors.new_password = `Password must contain: ${passwordErrors.join(', ')}`;
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return res.status(400).json({ errors });
+  }
+
+  // --- Update Database ---
+  const updateFields = [];
+  const updateValues = [];
+
+  if (username) {
+    updateFields.push('username = ?');
+    updateValues.push(username.trim());
+  }
+
+  if (full_name) {
+    updateFields.push('full_name = ?');
+    updateValues.push(full_name.trim());
+  }
+
+  if (new_password) {
+    const password_hash = bcrypt.hashSync(new_password, 12);
+    updateFields.push('password_hash = ?');
+    updateValues.push(password_hash);
+  }
+
+  if (bio !== undefined && user.role === 'author') {
+    updateFields.push('bio = ?');
+    updateValues.push(bio.trim() || null);
+  }
+
+  if (updateFields.length === 0) {
+    return res.status(400).json({ error: 'No fields to update' });
+  }
+
+  updateValues.push(userId);
+
+  const query = `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`;
+  db.prepare(query).run(...updateValues);
+
+  // Fetch updated user
+  const updatedUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+
+  res.json({
+    message: 'Profile updated successfully',
+    user: {
+      id: updatedUser.id,
+      username: updatedUser.username,
+      full_name: updatedUser.full_name,
+      role: updatedUser.role,
+      bio: updatedUser.bio,
+      employee_id: updatedUser.employee_id
     }
   });
 });
