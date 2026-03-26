@@ -29,6 +29,35 @@ export default function StudentPortal() {
 
   useEffect(() => { loadData(); }, [activeTab]);
 
+  /**
+   * Automatically return overdue books
+   * Called when the "My Borrows" tab is activated
+   */
+  const autoReturnOverdueBooks = async () => {
+    try {
+      // Get current borrow records
+      const { data: borrowsData } = await api.get('/books/my-borrows');
+      const now = new Date();
+      
+      // Find all overdue books with active status
+      const overdueBooks = borrowsData.filter(b => 
+        b.status === 'active' && new Date(b.due_date) < now
+      );
+
+      // Return each overdue book
+      for (const borrow of overdueBooks) {
+        try {
+          await api.post(`/books/return/${borrow.id}`);
+          console.log(`Automatically returned overdue book: ${borrow.title}`);
+        } catch (err) {
+          console.error(`Failed to return ${borrow.title}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error('Error checking for overdue books:', err);
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -39,6 +68,8 @@ export default function StudentPortal() {
         const { data } = await api.get('/books/recommendations');
         setRecommendations(data);
       } else if (activeTab === 'my-books') {
+        // Auto-return overdue books first, then load updated data
+        await autoReturnOverdueBooks();
         const { data } = await api.get('/books/my-borrows');
         setBorrows(data);
       }

@@ -61,10 +61,6 @@ export default function Profile({ onClose }) {
     setSaveSuccess('');
 
     // Validation
-    if (!formData.username.trim() || formData.username.trim().length < 3) {
-      setSaveError('Username must be at least 3 characters');
-      return;
-    }
     if (!formData.full_name.trim()) {
       setSaveError('Full name is required');
       return;
@@ -87,7 +83,6 @@ export default function Profile({ onClose }) {
 
     try {
       const updateData = {
-        username: formData.username.trim(),
         full_name: formData.full_name.trim(),
         current_password: currentPassword,
       };
@@ -281,17 +276,21 @@ export default function Profile({ onClose }) {
           <>
             {/* Editable Profile Form */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
-              {/* Username */}
+              {/* Username (Read-only) */}
               <div className="form-group">
                 <label className="form-label">Username</label>
-                <input
-                  className="form-input"
-                  type="text"
-                  name="username"
-                  value={formData.username}
-                  onChange={handleInputChange}
-                  placeholder="Username"
-                />
+                <div style={{
+                  background: 'var(--ink-3)',
+                  border: '1px solid var(--parchment-border)',
+                  borderRadius: 'var(--radius)',
+                  padding: '11px 14px',
+                  color: 'var(--parchment)',
+                  fontSize: '0.9rem',
+                  cursor: 'not-allowed',
+                  opacity: 0.6,
+                }}>
+                  {formData.username}
+                </div>
               </div>
 
               {/* Full Name */}

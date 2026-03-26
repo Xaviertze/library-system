@@ -163,9 +163,10 @@ router.post('/verify-password', (req, res) => {
  * PUT /api/auth/profile
  * Update user profile information
  * Requires authentication
+ * Note: Username cannot be changed and is not included in updates
  */
 router.put('/profile', authenticate, (req, res) => {
-  const { username, full_name, new_password, bio, current_password } = req.body;
+  const { full_name, new_password, bio, current_password } = req.body;
   const userId = req.user.id;
 
   // Fetch current user from database
@@ -187,20 +188,6 @@ router.put('/profile', authenticate, (req, res) => {
 
   // --- Input Validation ---
   const errors = {};
-
-  if (username && username.trim().length < 3) {
-    errors.username = 'Username must be at least 3 characters';
-  } else if (username && !/^[a-zA-Z0-9_]+$/.test(username)) {
-    errors.username = 'Username can only contain letters, numbers, and underscores';
-  }
-
-  // Check username uniqueness if username is being changed
-  if (username && username.trim() !== user.username) {
-    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username.trim());
-    if (existing) {
-      errors.username = 'Username already taken';
-    }
-  }
 
   if (full_name && full_name.trim().length === 0) {
     errors.full_name = 'Full name cannot be empty';
@@ -226,11 +213,6 @@ router.put('/profile', authenticate, (req, res) => {
   // --- Update Database ---
   const updateFields = [];
   const updateValues = [];
-
-  if (username) {
-    updateFields.push('username = ?');
-    updateValues.push(username.trim());
-  }
 
   if (full_name) {
     updateFields.push('full_name = ?');
