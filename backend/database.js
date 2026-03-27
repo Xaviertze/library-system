@@ -67,10 +67,64 @@ function initializeDatabase() {
       FOREIGN KEY (book_id) REFERENCES books(id),
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
+
+    -- Bookmarks table: saves reading progress per user/book
+    CREATE TABLE IF NOT EXISTS bookmarks (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      book_id TEXT NOT NULL,
+      page_number INTEGER NOT NULL,
+      label TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (book_id) REFERENCES books(id)
+    );
+
+    -- Highlights table: stores text highlights per user/book
+    CREATE TABLE IF NOT EXISTS highlights (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      book_id TEXT NOT NULL,
+      page_number INTEGER NOT NULL,
+      text_content TEXT NOT NULL,
+      color TEXT DEFAULT '#c9a84c',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (book_id) REFERENCES books(id)
+    );
+
+    -- Notifications table: system-wide notifications
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      priority TEXT DEFAULT 'normal',
+      category TEXT DEFAULT 'general',
+      is_read INTEGER DEFAULT 0,
+      is_archived INTEGER DEFAULT 0,
+      related_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    -- Crash recovery state table
+    CREATE TABLE IF NOT EXISTS crash_recovery (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      screen TEXT NOT NULL,
+      portal TEXT NOT NULL,
+      state_data TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
   `);
 
   // Migrate existing database if the books table was created without 'draft' in its constraint
   migrateAddDraftStatus();
+  // Run new column migrations
+  migrateAddNewColumns();
 
   console.log('\u2705 Database initialized successfully');
 }
@@ -125,6 +179,115 @@ function migrateAddDraftStatus() {
   }
 }
 
+/**
+ * Migration: add new columns to users and books tables for extended features.
+ * Uses ALTER TABLE which is safe — columns are added only if missing.
+ */
+function migrateAddNewColumns() {
+  // Helper: check if column exists
+  const hasColumn = (table, column) => {
+    const info = db.prepare(`PRAGMA table_info(${table})`).all();
+    return info.some(col => col.name === column);
+  };
+
+  // Users: profile_picture, active status
+  if (!hasColumn('users', 'profile_picture')) {
+    db.prepare('ALTER TABLE users ADD COLUMN profile_picture TEXT').run();
+    console.log('  ↳ Added users.profile_picture column');
+  }
+  if (!hasColumn('users', 'active')) {
+    db.prepare('ALTER TABLE users ADD COLUMN active INTEGER DEFAULT 1').run();
+    console.log('  ↳ Added users.active column');
+  }
+
+  // Books: cover_image, rejection_reason
+  if (!hasColumn('books', 'cover_image')) {
+    db.prepare('ALTER TABLE books ADD COLUMN cover_image TEXT').run();
+    console.log('  ↳ Added books.cover_image column');
+  }
+  if (!hasColumn('books', 'rejection_reason')) {
+    db.prepare('ALTER TABLE books ADD COLUMN rejection_reason TEXT').run();
+    console.log('  ↳ Added books.rejection_reason column');
+  }
+}
+
+/**
+ * Auto-return overdue books and create notifications.
+ * Called periodically or on relevant API requests.
+ */
+function processAutoReturns() {
+  const now = new Date().toISOString();
+  const overdue = db.prepare(`
+    SELECT br.id, br.book_id, br.user_id, b.title
+    FROM borrow_records br
+    JOIN books b ON br.book_id = b.id
+    WHERE br.status = 'active' AND br.due_date < ?
+  `).all(now);
+
+  if (overdue.length === 0) return [];
+
+  const { v4: uuidv4 } = require('uuid');
+  const autoReturn = db.transaction(() => {
+    for (const record of overdue) {
+      db.prepare(`UPDATE borrow_records SET status = 'returned', return_date = ? WHERE id = ?`)
+        .run(now, record.id);
+      db.prepare(`UPDATE books SET availability = 'available' WHERE id = ?`)
+        .run(record.book_id);
+      // Create notification for user
+      db.prepare(`
+        INSERT INTO notifications (id, user_id, type, title, message, priority, category, related_id)
+        VALUES (?, ?, 'auto_return', 'Book Auto-Returned', ?, 'urgent', 'borrow', ?)
+      `).run(
+        uuidv4(), record.user_id,
+        `"${record.title}" has been automatically returned because the due date has passed.`,
+        record.book_id
+      );
+    }
+  });
+  autoReturn();
+  return overdue;
+}
+
+/**
+ * Generate due date reminder notifications for books due within 24 hours.
+ */
+function generateDueReminders() {
+  const { v4: uuidv4 } = require('uuid');
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+  const dueSoon = db.prepare(`
+    SELECT br.id, br.book_id, br.user_id, br.due_date, b.title
+    FROM borrow_records br
+    JOIN books b ON br.book_id = b.id
+    WHERE br.status = 'active' AND br.due_date <= ? AND br.due_date > ?
+  `).all(tomorrow.toISOString(), now.toISOString());
+
+  const createReminders = db.transaction(() => {
+    for (const record of dueSoon) {
+      // Check if reminder already sent
+      const exists = db.prepare(`
+        SELECT id FROM notifications
+        WHERE user_id = ? AND type = 'due_reminder' AND related_id = ? AND created_at > ?
+      `).get(record.user_id, record.book_id, new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString());
+
+      if (!exists) {
+        db.prepare(`
+          INSERT INTO notifications (id, user_id, type, title, message, priority, category, related_id)
+          VALUES (?, ?, 'due_reminder', 'Return Reminder', ?, 'urgent', 'borrow', ?)
+        `).run(
+          uuidv4(), record.user_id,
+          `"${record.title}" is due on ${new Date(record.due_date).toLocaleDateString()}. Please return it soon.`,
+          record.book_id
+        );
+      }
+    }
+  });
+  createReminders();
+}
+
 initializeDatabase();
 
 module.exports = db;
+module.exports.processAutoReturns = processAutoReturns;
+module.exports.generateDueReminders = generateDueReminders;

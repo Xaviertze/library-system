@@ -1,16 +1,22 @@
 /**
  * Author Portal
  * Publish new books, manage submissions and drafts
+ * Extended: edit/delete books, cover image, preview, profile, notifications
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
+import NotificationBoard from '../components/NotificationBoard';
+import ProfileEditor from '../components/ProfileEditor';
+import { useCrashRecovery, CrashTestButton } from '../components/CrashRecovery';
 import api from '../utils/api';
 
 const NAV_ITEMS = [
   { id: 'publish', label: 'Publish New Book', icon: '✍️' },
   { id: 'submissions', label: 'My Submissions', icon: '📋' },
   { id: 'drafts', label: 'Drafts', icon: '📝' },
+  { id: 'notifications', label: 'Notifications', icon: '🔔' },
+  { id: 'profile', label: 'My Profile', icon: '👤' },
 ];
 
 const GENRES = [
@@ -26,7 +32,7 @@ const STATUS_CONFIG = {
 };
 
 export default function AuthorPortal() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('publish');
   const [submissions, setSubmissions] = useState([]);
   const [drafts, setDrafts] = useState([]);
@@ -34,12 +40,31 @@ export default function AuthorPortal() {
   const [success, setSuccess] = useState('');
   const [errors, setErrors] = useState({});
   const [file, setFile] = useState(null);
+  const [coverFile, setCoverFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [draftId, setDraftId] = useState(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState('');
   const [draftSaving, setDraftSaving] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const autoSaveTimer = useRef(null);
   const fileInputRef = useRef(null);
+  const coverInputRef = useRef(null);
+
+  // Edit modal state
+  const [editingBook, setEditingBook] = useState(null);
+  const [editForm, setEditForm] = useState({ title: '', genre: [], description: '' });
+  const [editFile, setEditFile] = useState(null);
+  const [editCover, setEditCover] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editErrors, setEditErrors] = useState({});
+
+  // Delete state
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [selectedForDelete, setSelectedForDelete] = useState(new Set());
+  const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
+
+  // Preview state
+  const [previewBook, setPreviewBook] = useState(null);
 
   const [form, setForm] = useState({
     title: '',
@@ -47,10 +72,21 @@ export default function AuthorPortal() {
     description: '',
   });
 
+  // Crash recovery
+  useCrashRecovery('author', activeTab, { form, draftId });
+
   useEffect(() => {
     if (activeTab === 'submissions') loadSubmissions();
     if (activeTab === 'drafts') loadDrafts();
+    loadUnreadCount();
   }, [activeTab]);
+
+  const loadUnreadCount = async () => {
+    try {
+      const { data } = await api.get('/notifications/unread-count');
+      setUnreadCount(data.count);
+    } catch {}
+  };
 
   // Restore in-progress publish form from localStorage on page load
   useEffect(() => {
@@ -76,7 +112,7 @@ export default function AuthorPortal() {
   useEffect(() => {
     if (activeTab !== 'publish') return;
     if (!form.title && !form.description) return;
-    
+
     clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(async () => {
       try {
@@ -173,6 +209,7 @@ export default function AuthorPortal() {
     formData.append('genre', form.genre.join(', '));
     formData.append('description', form.description);
     if (file) formData.append('book_file', file);
+    if (coverFile) formData.append('cover_image', coverFile);
     if (draftId) formData.append('draft_id', draftId);
 
     try {
@@ -182,6 +219,7 @@ export default function AuthorPortal() {
       setSuccess('Book submitted for librarian approval! ✓');
       setForm({ title: '', genre: [], description: '' });
       setFile(null);
+      setCoverFile(null);
       setDraftId(null);
       localStorage.removeItem('author_publish_draft');
     } catch (err) {
@@ -206,11 +244,100 @@ export default function AuthorPortal() {
     } catch { }
   };
 
+  // --- Edit Book ---
+  const openEdit = (book) => {
+    setEditingBook(book);
+    setEditForm({
+      title: book.title,
+      genre: (book.genre || '').split(',').map(g => g.trim()).filter(Boolean),
+      description: book.description,
+    });
+    setEditFile(null);
+    setEditCover(null);
+    setEditErrors({});
+  };
+
+  const handleEditSave = async () => {
+    setEditLoading(true);
+    setEditErrors({});
+    try {
+      const fd = new FormData();
+      fd.append('title', editForm.title);
+      fd.append('genre', editForm.genre.join(', '));
+      fd.append('description', editForm.description);
+      if (editFile) fd.append('book_file', editFile);
+      if (editCover) fd.append('cover_image', editCover);
+      await api.put(`/books/${editingBook.id}/edit`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setEditingBook(null);
+      setSuccess('Book updated successfully!');
+      loadSubmissions();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setEditErrors(err.response?.data?.errors || { general: err.response?.data?.error || 'Update failed' });
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // --- Delete Book ---
+  const handleDelete = async (bookId) => {
+    try {
+      await api.delete(`/books/${bookId}`);
+      setConfirmDelete(null);
+      setSuccess('Book deleted successfully');
+      loadSubmissions();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setSuccess('');
+      setErrors({ general: err.response?.data?.error || 'Delete failed' });
+      setTimeout(() => setErrors({}), 3000);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedForDelete.size === 0) return;
+    try {
+      const { data } = await api.post('/books/bulk-delete', { book_ids: [...selectedForDelete] });
+      setSuccess(data.message + (data.errors?.length ? ` Errors: ${data.errors.join('; ')}` : ''));
+      setSelectedForDelete(new Set());
+      setBulkDeleteMode(false);
+      loadSubmissions();
+      setTimeout(() => setSuccess(''), 5000);
+    } catch (err) {
+      setErrors({ general: err.response?.data?.error || 'Bulk delete failed' });
+      setTimeout(() => setErrors({}), 3000);
+    }
+  };
+
+  const canEdit = (book) => book.status === 'pending' || (book.status === 'approved' && book.availability !== 'borrowed');
+  const canDelete = (book) => book.availability !== 'borrowed';
+
+  const crashSave = useCallback(async () => {
+    try {
+      await api.post('/recovery/save', { screen: activeTab, portal: 'author', state_data: { form, draftId } });
+    } catch {}
+  }, [activeTab, form, draftId]);
+
+  // Nav items with unread badge
+  const navItemsWithBadge = NAV_ITEMS.map(item => {
+    if (item.id === 'notifications' && unreadCount > 0) {
+      return { ...item, label: `Notifications (${unreadCount})` };
+    }
+    return item;
+  });
+
   return (
     <div className="app-layout">
-      <Sidebar navItems={NAV_ITEMS} activeTab={activeTab} onTabChange={setActiveTab} />
+      <Sidebar navItems={navItemsWithBadge} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <main className="main-content">
+        {/* Crash Test */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <CrashTestButton onBeforeCrash={crashSave} />
+        </div>
+
         {/* Publish Tab */}
         {activeTab === 'publish' && (
           <div style={{ maxWidth: 700 }}>
@@ -287,6 +414,26 @@ export default function AuthorPortal() {
                 {errors.description && <span className="form-error">⚠ {errors.description}</span>}
               </div>
 
+              {/* Cover Image Upload */}
+              <div className="form-group">
+                <label className="form-label">Cover Image (optional — JPG/PNG, max 2MB)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button type="button" className="btn btn-ghost btn-sm"
+                    onClick={() => coverInputRef.current?.click()}>
+                    {coverFile ? 'Change Cover' : 'Upload Cover'}
+                  </button>
+                  <input ref={coverInputRef} type="file" accept="image/jpeg,image/png"
+                    style={{ display: 'none' }}
+                    onChange={e => { if (e.target.files?.[0]) setCoverFile(e.target.files[0]); }} />
+                  {coverFile && (
+                    <span style={{ fontSize: '0.82rem', color: 'var(--slate)' }}>
+                      {coverFile.name} ({(coverFile.size / 1024 / 1024).toFixed(2)}MB)
+                    </span>
+                  )}
+                </div>
+                {errors.cover && <span className="form-error">⚠ {errors.cover}</span>}
+              </div>
+
               {/* File Upload */}
               <div className="form-group">
                 <label className="form-label">Book File * (PDF, TXT, DOC, DOCX — max 50MB)</label>
@@ -326,9 +473,28 @@ export default function AuthorPortal() {
                 {errors.file && <span className="form-error">⚠ {errors.file}</span>}
               </div>
 
+              {/* Preview before submission */}
+              {form.title && form.description && (
+                <div className="card" style={{ borderColor: 'var(--gold-border)' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+                    Preview
+                  </div>
+                  <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', marginBottom: 4 }}>{form.title}</h3>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--gold)', marginBottom: 8 }}>by {user.full_name}</div>
+                  {form.genre.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                      {form.genre.map(g => <span key={g} className="badge badge-genre">{g}</span>)}
+                    </div>
+                  )}
+                  <p style={{ fontSize: '0.88rem', color: 'rgba(245,240,232,0.65)' }}>{form.description}</p>
+                  {file && <div style={{ fontSize: '0.78rem', color: 'var(--slate)', marginTop: 8 }}>📄 {file.name}</div>}
+                  {coverFile && <div style={{ fontSize: '0.78rem', color: 'var(--slate)' }}>🖼 Cover: {coverFile.name}</div>}
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <button className="btn btn-primary btn-lg" type="submit" disabled={loading}>
-                  {loading ? 'Submitting…' : '📤 Submit for Review'}
+                  {loading ? 'Submitting…' : 'Submit for Review'}
                 </button>
                 <button
                   className="btn btn-secondary btn-lg"
@@ -336,7 +502,7 @@ export default function AuthorPortal() {
                   disabled={draftSaving}
                   onClick={handleSaveDraft}
                 >
-                  {draftSaving ? 'Saving…' : '💾 Save Draft'}
+                  {draftSaving ? 'Saving…' : 'Save Draft'}
                 </button>
               </div>
             </form>
@@ -349,6 +515,22 @@ export default function AuthorPortal() {
             <div className="page-header">
               <h2 className="page-title">My Submissions</h2>
               <p className="page-subtitle">Track the status of your submitted books</p>
+            </div>
+
+            {success && <div className="alert alert-success mb-4">✓ {success}</div>}
+            {errors.general && <div className="alert alert-error mb-4">⚠ {errors.general}</div>}
+
+            {/* Bulk actions */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+              <button className={`btn btn-sm ${bulkDeleteMode ? 'btn-danger' : 'btn-ghost'}`}
+                onClick={() => { setBulkDeleteMode(!bulkDeleteMode); setSelectedForDelete(new Set()); }}>
+                {bulkDeleteMode ? 'Cancel Bulk Delete' : 'Bulk Delete'}
+              </button>
+              {bulkDeleteMode && selectedForDelete.size > 0 && (
+                <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
+                  Delete {selectedForDelete.size} Book(s)
+                </button>
+              )}
             </div>
 
             {loading ? (
@@ -364,20 +546,51 @@ export default function AuthorPortal() {
                 {submissions.map(book => {
                   const s = STATUS_CONFIG[book.status] || STATUS_CONFIG.pending;
                   return (
-                    <div key={book.id} className="card">
+                    <div key={book.id} className="card" style={bulkDeleteMode && selectedForDelete.has(book.id) ? { borderColor: 'var(--ruby)' } : {}}>
                       <div className="flex justify-between items-center mb-4">
-                        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem' }}>{book.title}</h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          {bulkDeleteMode && canDelete(book) && (
+                            <input type="checkbox" checked={selectedForDelete.has(book.id)}
+                              onChange={() => {
+                                setSelectedForDelete(prev => {
+                                  const next = new Set(prev);
+                                  next.has(book.id) ? next.delete(book.id) : next.add(book.id);
+                                  return next;
+                                });
+                              }} />
+                          )}
+                          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem' }}>{book.title}</h3>
+                        </div>
                         <span className={`badge ${s.badge}`}>{s.icon} {s.label}</span>
                       </div>
                       <div style={{ display: 'flex', gap: 20, fontSize: '0.82rem', color: 'var(--slate)', flexWrap: 'wrap' }}>
-                        <span>🏷️ {book.genre}</span>
-                        <span>📅 Submitted: {new Date(book.submitted_date).toLocaleDateString()}</span>
-                        {book.publish_date && <span>🌍 Published: {new Date(book.publish_date).toLocaleDateString()}</span>}
+                        <span>{book.genre}</span>
+                        <span>Submitted: {new Date(book.submitted_date).toLocaleDateString()}</span>
+                        {book.publish_date && <span>Published: {new Date(book.publish_date).toLocaleDateString()}</span>}
                         {book.file_name && <span>📄 {book.file_name}</span>}
                       </div>
+                      {book.rejection_reason && (
+                        <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 6, background: 'var(--ruby-dim)', color: 'var(--ruby-light)', fontSize: '0.85rem' }}>
+                          Rejection reason: {book.rejection_reason}
+                        </div>
+                      )}
                       <p style={{ marginTop: 10, fontSize: '0.88rem', color: 'rgba(245,240,232,0.65)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                         {book.description}
                       </p>
+                      {/* Action buttons */}
+                      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                        {canEdit(book) && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => openEdit(book)}>
+                            Edit
+                          </button>
+                        )}
+                        {canDelete(book) && (
+                          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--ruby-light)' }}
+                            onClick={() => setConfirmDelete(book)}>
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -409,7 +622,7 @@ export default function AuthorPortal() {
                   return (
                     <div key={draft.id} className="book-card">
                       <div style={{ fontSize: '0.72rem', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                        📝 Draft
+                        Draft
                       </div>
                       <div className="book-title">{draft.title}</div>
                       <div style={{ fontSize: '0.82rem', color: 'var(--slate)' }}>
@@ -417,7 +630,7 @@ export default function AuthorPortal() {
                       </div>
                       <p className="book-description">{data.description || 'No description yet'}</p>
                       <button className="btn btn-primary btn-sm" onClick={() => loadDraft(draft)}>
-                        ✏️ Continue Editing
+                        Continue Editing
                       </button>
                     </div>
                   );
@@ -426,7 +639,106 @@ export default function AuthorPortal() {
             )}
           </div>
         )}
+
+        {/* Notifications Tab */}
+        {activeTab === 'notifications' && (
+          <NotificationBoard categories={['submissions', 'general', 'announcement']} />
+        )}
+
+        {/* Profile Tab */}
+        {activeTab === 'profile' && (
+          <ProfileEditor
+            showFields={['full_name', 'password', 'bio']}
+            onPasswordChanged={logout}
+          />
+        )}
       </main>
+
+      {/* Edit Book Modal */}
+      {editingBook && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditingBook(null)}>
+          <div className="modal" style={{ maxWidth: 560 }}>
+            <div className="modal-header">
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem' }}>Edit Book</h3>
+              <button className="modal-close" onClick={() => setEditingBook(null)}>✕</button>
+            </div>
+
+            {editErrors.general && <div className="alert alert-error mb-4">⚠ {editErrors.general}</div>}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="form-group">
+                <label className="form-label">Title</label>
+                <input className="form-input" value={editForm.title}
+                  onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))} />
+                {editErrors.title && <span className="form-error">⚠ {editErrors.title}</span>}
+              </div>
+              <div className="form-group">
+                <label className="form-label">Genres</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {GENRES.map(g => (
+                    <button key={g} type="button"
+                      onClick={() => setEditForm(f => ({
+                        ...f,
+                        genre: f.genre.includes(g) ? f.genre.filter(x => x !== g) : [...f.genre, g]
+                      }))}
+                      style={{
+                        padding: '4px 12px', borderRadius: 20, fontSize: '0.78rem', cursor: 'pointer',
+                        border: `1px solid ${editForm.genre.includes(g) ? 'var(--gold)' : 'var(--parchment-border)'}`,
+                        background: editForm.genre.includes(g) ? 'var(--gold-dim)' : 'transparent',
+                        color: editForm.genre.includes(g) ? 'var(--gold-light)' : 'var(--slate-light)',
+                      }}>
+                      {editForm.genre.includes(g) && '✓ '}{g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Description</label>
+                <textarea className="form-textarea" rows={4} value={editForm.description}
+                  onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
+                {editErrors.description && <span className="form-error">⚠ {editErrors.description}</span>}
+              </div>
+              <div className="form-group">
+                <label className="form-label">Replace Book File (optional)</label>
+                <input type="file" accept=".pdf,.txt,.doc,.docx"
+                  onChange={e => setEditFile(e.target.files?.[0] || null)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Replace Cover Image (optional)</label>
+                <input type="file" accept="image/jpeg,image/png"
+                  onChange={e => setEditCover(e.target.files?.[0] || null)} />
+              </div>
+              <div className="flex gap-3">
+                <button className="btn btn-ghost" onClick={() => setEditingBook(null)}>Cancel</button>
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleEditSave} disabled={editLoading}>
+                  {editLoading ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation */}
+      {confirmDelete && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setConfirmDelete(null)}>
+          <div className="modal" style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem' }}>Confirm Delete</h3>
+              <button className="modal-close" onClick={() => setConfirmDelete(null)}>✕</button>
+            </div>
+            <div className="alert alert-error mb-4">
+              Are you sure you want to delete <strong>"{confirmDelete.title}"</strong>? This cannot be undone.
+            </div>
+            <div className="flex gap-3">
+              <button className="btn btn-ghost" onClick={() => setConfirmDelete(null)}>Cancel</button>
+              <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => handleDelete(confirmDelete.id)}>
+                Delete Book
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

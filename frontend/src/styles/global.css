@@ -882,3 +882,104 @@ input[type="checkbox"] {
 }
 .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; }
 .empty-state p { max-width: 300px; margin: 0 auto; }
+
+/* ====================================================
+   EXTENDED STYLES — New feature additions
+   (appended only, no existing styles modified)
+   ==================================================== */
+
+/* ---- Password Strength Meter ---- */
+.pw-strength-bar {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+.pw-strength-bar > div {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--parchment-border);
+  transition: background var(--transition);
+}
+
+/* ---- Notification Dot ---- */
+.notification-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+/* ---- Crash Test Button pulse ---- */
+.crash-test-pulse {
+  animation: crashPulse 2s ease-in-out infinite;
+}
+@keyframes crashPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ---- Toast Notification (fixed) ---- */
+.toast-notification {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 3000;
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  animation: fadeIn 0.2s ease, slideDown 0.25s ease;
+  pointer-events: auto;
+}
+@keyframes slideDown {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ---- Multi-select Highlight ---- */
+.book-card.multi-selected {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 2px var(--gold-dim);
+}
+
+/* ---- Profile Avatar ---- */
+.profile-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--gold-dim);
+  border: 2px solid var(--gold-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: var(--gold);
+  font-family: var(--font-display);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ---- Inline range input alignment ---- */
+input[type="range"] {
+  accent-color: var(--gold);
+}
+
+/* ---- Table responsive improvements ---- */
+@media (max-width: 768px) {
+  .filter-bar {
+    flex-direction: column;
+  }
+  .filter-bar .form-input,
+  .filter-bar .form-select {
+    flex: 1 1 100% !important;
+    min-width: unset !important;
+  }
+}
