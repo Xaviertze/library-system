@@ -13,6 +13,18 @@ const { authenticate, authorize } = require('../middleware/auth');
 const router = express.Router();
 
 const BORROW_LIMIT = 5; // Maximum active borrows per user
+const UPLOADS_DIR = path.join(__dirname, '..', 'uploads', 'books');
+
+// Resolve a stored file_path to an actual path on disk
+// Handles both absolute paths and cases where the project was moved
+function resolveFilePath(filePath) {
+  if (!filePath) return null;
+  if (fs.existsSync(filePath)) return filePath;
+  // Fallback: extract filename and look in uploads/books
+  const filename = path.basename(filePath);
+  const fallback = path.join(UPLOADS_DIR, filename);
+  return fs.existsSync(fallback) ? fallback : null;
+}
 
 // Configure multer for book file uploads
 const storage = multer.diskStorage({
@@ -359,7 +371,7 @@ router.post('/submit', authenticate, authorize('author'), uploadFields, (req, re
   `).run(
     bookId, title.trim(), authorId, author.full_name,
     genre.trim(), description.trim(),
-    bookFile.path, bookFile.originalname, coverPath
+    path.join(UPLOADS_DIR, bookFile.filename), bookFile.originalname, coverPath
   );
 
   // Delete draft if this was submitted from a draft
@@ -405,7 +417,7 @@ router.post('/draft', authenticate, authorize('author'), uploadFields, (req, res
         WHERE id = ? AND author_id = ?
       `).run(
         draftData, title || 'Untitled Draft', genre || '', description || '',
-        bookFile.path, bookFile.originalname, draft_id, authorId
+        path.join(UPLOADS_DIR, bookFile.filename), bookFile.originalname, draft_id, authorId
       );
     } else {
       db.prepare(`
@@ -431,7 +443,7 @@ router.post('/draft', authenticate, authorize('author'), uploadFields, (req, res
     genre || '',
     description || '',
     draftData,
-    bookFile ? bookFile.path : null,
+    bookFile ? path.join(UPLOADS_DIR, bookFile.filename) : null,
     bookFile ? bookFile.originalname : null
   );
 
@@ -605,12 +617,13 @@ router.post('/bulk-action', authenticate, authorize('librarian'), (req, res) => 
  */
 router.get('/download/:id', authenticate, (req, res) => {
   const book = db.prepare('SELECT file_path, file_name FROM books WHERE id = ?').get(req.params.id);
+  const resolved = resolveFilePath(book?.file_path);
 
-  if (!book || !book.file_path || !fs.existsSync(book.file_path)) {
+  if (!book || !resolved) {
     return res.status(404).json({ error: 'File not found' });
   }
 
-  res.download(book.file_path, book.file_name);
+  res.download(resolved, book.file_name);
 });
 
 /**
@@ -619,8 +632,9 @@ router.get('/download/:id', authenticate, (req, res) => {
  */
 router.get('/view/:id', authenticate, (req, res) => {
   const book = db.prepare('SELECT file_path, file_name FROM books WHERE id = ?').get(req.params.id);
+  const resolved = resolveFilePath(book?.file_path);
 
-  if (!book || !book.file_path || !fs.existsSync(book.file_path)) {
+  if (!book || !resolved) {
     return res.status(404).json({ error: 'File not found' });
   }
 
@@ -634,7 +648,7 @@ router.get('/view/:id', authenticate, (req, res) => {
 
   res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
   res.setHeader('Content-Disposition', `inline; filename="${book.file_name}"`);
-  fs.createReadStream(book.file_path).pipe(res);
+  fs.createReadStream(resolved).pipe(res);
 });
 
 /* =============================================
@@ -676,7 +690,7 @@ router.put('/:id/edit', authenticate, authorize('author'), uploadFields, (req, r
     if (description !== undefined) { updates.push('description = ?'); params.push(description.trim()); }
     if (bookFile) {
       updates.push('file_path = ?, file_name = ?');
-      params.push(bookFile.path, bookFile.originalname);
+      params.push(path.join(UPLOADS_DIR, bookFile.filename), bookFile.originalname);
     }
     if (coverFile) {
       updates.push('cover_image = ?');
@@ -941,8 +955,9 @@ router.get('/borrow-records/export', authenticate, authorize('librarian'), (req,
  */
 router.get('/preview/:id', authenticate, authorize('librarian'), (req, res) => {
   const book = db.prepare('SELECT file_path, file_name FROM books WHERE id = ?').get(req.params.id);
+  const resolved = resolveFilePath(book?.file_path);
 
-  if (!book || !book.file_path || !fs.existsSync(book.file_path)) {
+  if (!book || !resolved) {
     return res.status(404).json({ error: 'File not found' });
   }
 
@@ -956,7 +971,7 @@ router.get('/preview/:id', authenticate, authorize('librarian'), (req, res) => {
 
   res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
   res.setHeader('Content-Disposition', `inline; filename="${book.file_name}"`);
-  fs.createReadStream(book.file_path).pipe(res);
+  fs.createReadStream(resolved).pipe(res);
 });
 
 module.exports = router;

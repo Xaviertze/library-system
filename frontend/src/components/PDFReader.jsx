@@ -1,6 +1,6 @@
 /**
  * PDF Reader Component
- * In-browser PDF viewer with bookmark and highlight management
+ * Full-screen PDF viewer with bookmark and highlight management
  */
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
@@ -14,6 +14,7 @@ export default function PDFReader({ book, onClose }) {
   const [msg, setMsg] = useState('');
   const [blobUrl, setBlobUrl] = useState(null);
   const [fileLoading, setFileLoading] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     loadBookmarks();
@@ -21,6 +22,18 @@ export default function PDFReader({ book, onClose }) {
     loadFile();
     return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
   }, [book.book_id]);
+
+  // Escape key to exit fullscreen or close reader
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        if (isFullscreen) setIsFullscreen(false);
+        else onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [isFullscreen, onClose]);
 
   const loadFile = async () => {
     setFileLoading(true);
@@ -100,16 +113,51 @@ export default function PDFReader({ book, onClose }) {
 
   const isPdf = book.file_name?.toLowerCase().endsWith('.pdf');
 
+  const containerStyle = isFullscreen ? {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100vw',
+    height: '100vh',
+    zIndex: 9999,
+    background: 'var(--ink)',
+    display: 'flex',
+    flexDirection: 'column',
+    borderRadius: 0,
+    padding: 0,
+    margin: 0,
+    maxWidth: 'none',
+    maxHeight: 'none',
+  } : {
+    maxWidth: '90vw',
+    width: '90vw',
+    height: '90vh',
+    maxHeight: '90vh',
+    display: 'flex',
+    flexDirection: 'column',
+    padding: 0,
+  };
+
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 1100, width: '95vw', maxHeight: '95vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
+    <div className={isFullscreen ? '' : 'modal-overlay'}
+      onClick={e => !isFullscreen && e.target === e.currentTarget && onClose()}
+      style={isFullscreen ? { position: 'fixed', inset: 0, zIndex: 9998 } : undefined}>
+      <div className={isFullscreen ? '' : 'modal'} style={containerStyle}>
         {/* Header */}
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--parchment-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-          <div>
-            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', margin: 0 }}>{book.title}</h3>
-            <span style={{ fontSize: '0.82rem', color: 'var(--gold)' }}>by {book.author_name}</span>
+        <div style={{
+          padding: '10px 20px',
+          borderBottom: '1px solid var(--parchment-border)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexShrink: 0,
+          background: isFullscreen ? 'var(--ink-light)' : 'transparent',
+        }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{book.title}</h3>
+            <span style={{ fontSize: '0.8rem', color: 'var(--gold)' }}>by {book.author_name}</span>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
             <button className={`btn btn-sm ${activePanel === 'bookmarks' ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setActivePanel(activePanel === 'bookmarks' ? null : 'bookmarks')}>
               Bookmarks ({bookmarks.length})
@@ -118,19 +166,27 @@ export default function PDFReader({ book, onClose }) {
               onClick={() => setActivePanel(activePanel === 'highlights' ? null : 'highlights')}>
               Highlights ({highlights.length})
             </button>
-            <button className="modal-close" onClick={onClose}>✕</button>
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => setIsFullscreen(f => !f)}
+              title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
+              style={{ fontSize: '1.1rem', padding: '4px 8px', lineHeight: 1 }}
+            >
+              {isFullscreen ? '⊡' : '⊞'}
+            </button>
+            <button className="modal-close" onClick={onClose} title="Close (Esc)">✕</button>
           </div>
         </div>
 
         {msg && (
-          <div style={{ padding: '8px 24px', background: 'var(--gold-dim)', color: 'var(--gold-light)', fontSize: '0.85rem', flexShrink: 0 }}>
+          <div style={{ padding: '6px 20px', background: 'var(--gold-dim)', color: 'var(--gold-light)', fontSize: '0.85rem', flexShrink: 0 }}>
             {msg}
           </div>
         )}
 
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
           {/* PDF Viewer */}
-          <div style={{ flex: 1, position: 'relative' }}>
+          <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
             {fileLoading ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                 <div className="spinner" />
