@@ -3,12 +3,12 @@
  * Publish new books, manage submissions and drafts
  * Extended: edit/delete books, cover image, preview, profile, notifications
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
 import NotificationBoard from '../components/NotificationBoard';
 import ProfileEditor from '../components/ProfileEditor';
-import { useCrashRecovery, CrashTestButton } from '../components/CrashRecovery';
+import { useCrashRecovery } from '../components/CrashRecovery';
 import api from '../utils/api';
 
 const NAV_ITEMS = [
@@ -29,6 +29,7 @@ const STATUS_CONFIG = {
   pending: { label: 'Pending Review', badge: 'badge-pending', icon: '⏳' },
   approved: { label: 'Approved', badge: 'badge-available', icon: '✓' },
   rejected: { label: 'Rejected', badge: 'badge-unavailable', icon: '✕' },
+  pending_deletion: { label: 'Pending Deletion', badge: 'badge-unavailable', icon: '🗑' },
 };
 
 export default function AuthorPortal() {
@@ -267,11 +268,11 @@ export default function AuthorPortal() {
       fd.append('description', editForm.description);
       if (editFile) fd.append('book_file', editFile);
       if (editCover) fd.append('cover_image', editCover);
-      await api.put(`/books/${editingBook.id}/edit`, fd, {
+      const { data } = await api.put(`/books/${editingBook.id}/edit`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setEditingBook(null);
-      setSuccess('Book updated successfully!');
+      setSuccess(data.message || 'Book updated successfully!');
       loadSubmissions();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -284,9 +285,9 @@ export default function AuthorPortal() {
   // --- Delete Book ---
   const handleDelete = async (bookId) => {
     try {
-      await api.delete(`/books/${bookId}`);
+      const { data } = await api.delete(`/books/${bookId}`);
       setConfirmDelete(null);
-      setSuccess('Book deleted successfully');
+      setSuccess(data.message || 'Deletion request submitted');
       loadSubmissions();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -312,13 +313,7 @@ export default function AuthorPortal() {
   };
 
   const canEdit = (book) => book.status === 'pending' || (book.status === 'approved' && book.availability !== 'borrowed');
-  const canDelete = (book) => book.availability !== 'borrowed';
-
-  const crashSave = useCallback(async () => {
-    try {
-      await api.post('/recovery/save', { screen: activeTab, portal: 'author', state_data: { form, draftId } });
-    } catch {}
-  }, [activeTab, form, draftId]);
+  const canDelete = (book) => book.availability !== 'borrowed' && book.status !== 'pending_deletion';
 
   // Nav items with unread badge
   const navItemsWithBadge = NAV_ITEMS.map(item => {
@@ -333,11 +328,6 @@ export default function AuthorPortal() {
       <Sidebar navItems={navItemsWithBadge} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <main className="main-content">
-        {/* Crash Test */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-          <CrashTestButton onBeforeCrash={crashSave} />
-        </div>
-
         {/* Publish Tab */}
         {activeTab === 'publish' && (
           <div style={{ maxWidth: 700 }}>
@@ -728,12 +718,12 @@ export default function AuthorPortal() {
               <button className="modal-close" onClick={() => setConfirmDelete(null)}>✕</button>
             </div>
             <div className="alert alert-error mb-4">
-              Are you sure you want to delete <strong>"{confirmDelete.title}"</strong>? This cannot be undone.
+              Request deletion of <strong>"{confirmDelete.title}"</strong>? A librarian will review this request.
             </div>
             <div className="flex gap-3">
               <button className="btn btn-ghost" onClick={() => setConfirmDelete(null)}>Cancel</button>
               <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => handleDelete(confirmDelete.id)}>
-                Delete Book
+                Request Deletion
               </button>
             </div>
           </div>

@@ -93,7 +93,7 @@ const uploadFields = upload.fields([
 router.get('/', authenticate, (req, res) => {
   const books = db.prepare(`
     SELECT b.id, b.title, b.author_name, b.genre, b.description,
-           b.availability, b.publish_date, b.times_borrowed
+           b.availability, b.publish_date, b.times_borrowed, b.cover_image
     FROM books b
     WHERE b.status = 'approved'
     ORDER BY b.publish_date DESC
@@ -109,7 +109,7 @@ router.get('/', authenticate, (req, res) => {
 router.get('/recommendations', authenticate, authorize('student', 'staff'), (req, res) => {
   const books = db.prepare(`
     SELECT b.id, b.title, b.author_name, b.genre, b.description,
-           b.availability, b.publish_date, b.times_borrowed
+           b.availability, b.publish_date, b.times_borrowed, b.cover_image
     FROM books b
     WHERE b.status = 'approved'
     ORDER BY b.times_borrowed DESC
@@ -320,6 +320,13 @@ router.post('/:id/return', authenticate, authorize('student', 'staff'), (req, re
       UPDATE books SET availability = 'available'
       WHERE id = ?
     `).run(id);
+
+    // Archive due-date and auto-return notifications for this book
+    db.prepare(`
+      UPDATE notifications
+      SET is_read = 1, is_archived = 1
+      WHERE user_id = ? AND related_id = ? AND type IN ('due_reminder', 'auto_return')
+    `).run(userId, id);
   });
 
   returnBook();
@@ -493,7 +500,7 @@ router.get('/pending', authenticate, authorize('librarian'), (req, res) => {
 
   let query = `
     SELECT b.id, b.title, b.author_name, b.genre, b.description,
-           b.submitted_date, b.status, b.file_name,
+           b.submitted_date, b.status, b.file_name, b.cover_image,
            u.username as author_username
     FROM books b
     JOIN users u ON b.author_id = u.id
@@ -573,6 +580,76 @@ router.patch('/:id/reject', authenticate, authorize('librarian'), (req, res) => 
   );
 
   res.json({ message: 'Book submission rejected' });
+});
+
+/**
+ * PATCH /api/books/:id/approve-delete
+ * Librarian approves a deletion request — physically removes the book
+ */
+router.patch('/:id/approve-delete', authenticate, authorize('librarian'), (req, res) => {
+  const { id } = req.params;
+
+  const book = db.prepare("SELECT * FROM books WHERE id = ? AND status = 'pending_deletion'").get(id);
+  if (!book) {
+    return res.status(404).json({ error: 'No pending deletion request found for this book' });
+  }
+
+  // Notify affected users
+  const affectedUsers = db.prepare(
+    'SELECT DISTINCT user_id FROM borrow_records WHERE book_id = ?'
+  ).all(id);
+  for (const u of affectedUsers) {
+    db.prepare(`
+      INSERT INTO notifications (id, user_id, type, title, message, priority, category, related_id)
+      VALUES (?, ?, 'book_deleted', 'Book Removed', ?, 'normal', 'general', ?)
+    `).run(uuidv4(), u.user_id, `"${book.title}" has been removed from the library.`, id);
+  }
+
+  // Notify the author
+  db.prepare(`
+    INSERT INTO notifications (id, user_id, type, title, message, category, related_id)
+    VALUES (?, ?, 'approval', 'Deletion Approved', ?, 'submissions', ?)
+  `).run(uuidv4(), book.author_id, `Your deletion request for "${book.title}" has been approved.`, id);
+
+  // Delete related records and the book
+  db.prepare('DELETE FROM bookmarks WHERE book_id = ?').run(id);
+  db.prepare('DELETE FROM highlights WHERE book_id = ?').run(id);
+  db.prepare('DELETE FROM notifications WHERE related_id = ? AND type = ?').run(id, 'delete_request');
+  db.prepare('DELETE FROM borrow_records WHERE book_id = ?').run(id);
+  db.prepare('DELETE FROM books WHERE id = ?').run(id);
+
+  // Clean up files
+  const resolved = resolveFilePath(book.file_path);
+  if (resolved) fs.unlinkSync(resolved);
+  if (book.cover_image) {
+    const coverPath = path.join(__dirname, '..', book.cover_image);
+    if (fs.existsSync(coverPath)) fs.unlinkSync(coverPath);
+  }
+
+  res.json({ message: 'Book deletion approved and removed' });
+});
+
+/**
+ * PATCH /api/books/:id/reject-delete
+ * Librarian rejects a deletion request — restores book to approved status
+ */
+router.patch('/:id/reject-delete', authenticate, authorize('librarian'), (req, res) => {
+  const { id } = req.params;
+
+  const book = db.prepare("SELECT * FROM books WHERE id = ? AND status = 'pending_deletion'").get(id);
+  if (!book) {
+    return res.status(404).json({ error: 'No pending deletion request found for this book' });
+  }
+
+  db.prepare("UPDATE books SET status = 'approved' WHERE id = ?").run(id);
+
+  // Notify author
+  db.prepare(`
+    INSERT INTO notifications (id, user_id, type, title, message, category, related_id)
+    VALUES (?, ?, 'rejection', 'Deletion Request Rejected', ?, 'submissions', ?)
+  `).run(uuidv4(), book.author_id, `Your deletion request for "${book.title}" has been rejected. The book remains published.`, id);
+
+  res.json({ message: 'Deletion request rejected, book restored' });
 });
 
 /**
@@ -701,11 +778,29 @@ router.put('/:id/edit', authenticate, authorize('author'), uploadFields, (req, r
       return res.status(400).json({ error: 'No fields to update' });
     }
 
+    // If editing an approved book, set status back to pending for re-approval
+    const wasApproved = book.status === 'approved';
+    if (wasApproved) {
+      updates.push("status = 'pending'");
+      updates.push("availability = 'available'");
+    }
+
     updateQuery += updates.join(', ') + ' WHERE id = ?';
     params.push(id);
     db.prepare(updateQuery).run(...params);
 
-    res.json({ message: 'Book updated successfully' });
+    // Notify librarians if an approved book was edited and needs re-approval
+    if (wasApproved) {
+      const librarians = db.prepare("SELECT id FROM users WHERE role = 'librarian'").all();
+      for (const lib of librarians) {
+        db.prepare(`
+          INSERT INTO notifications (id, user_id, type, title, message, category, related_id)
+          VALUES (?, ?, 'new_submission', 'Book Re-Submitted for Review', ?, 'submissions', ?)
+        `).run(uuidv4(), lib.id, `"${title || book.title}" by ${book.author_name} has been edited and requires re-approval.`, id);
+      }
+    }
+
+    res.json({ message: wasApproved ? 'Book updated and sent for re-approval' : 'Book updated successfully' });
   } else {
     if (bookFile) fs.unlinkSync(bookFile.path);
     if (coverFile) fs.unlinkSync(coverFile.path);
@@ -715,7 +810,7 @@ router.put('/:id/edit', authenticate, authorize('author'), uploadFields, (req, r
 
 /**
  * DELETE /api/books/:id
- * Author deletes their own book
+ * Author requests deletion of their own book (sends to librarian for approval)
  */
 router.delete('/:id', authenticate, authorize('author'), (req, res) => {
   const { id } = req.params;
@@ -727,35 +822,28 @@ router.delete('/:id', authenticate, authorize('author'), (req, res) => {
     return res.status(400).json({ error: 'Cannot delete a book that is currently borrowed' });
   }
 
-  // Notify affected users (those who have borrowed this book before)
-  const affectedUsers = db.prepare(
-    'SELECT DISTINCT user_id FROM borrow_records WHERE book_id = ?'
-  ).all(id);
-  for (const u of affectedUsers) {
+  if (book.status === 'pending_deletion') {
+    return res.status(400).json({ error: 'Deletion request already pending' });
+  }
+
+  // Mark book as pending deletion instead of hard deleting
+  db.prepare("UPDATE books SET status = 'pending_deletion' WHERE id = ?").run(id);
+
+  // Notify librarians about the deletion request
+  const librarians = db.prepare("SELECT id FROM users WHERE role = 'librarian'").all();
+  for (const lib of librarians) {
     db.prepare(`
       INSERT INTO notifications (id, user_id, type, title, message, priority, category, related_id)
-      VALUES (?, ?, 'book_deleted', 'Book Removed', ?, 'normal', 'general', ?)
-    `).run(uuidv4(), u.user_id, `"${book.title}" has been removed from the library.`, id);
+      VALUES (?, ?, 'delete_request', 'Book Deletion Request', ?, 'normal', 'submissions', ?)
+    `).run(uuidv4(), lib.id, `Author "${book.author_name}" has requested deletion of "${book.title}".`, id);
   }
 
-  // Delete related records
-  db.prepare('DELETE FROM bookmarks WHERE book_id = ?').run(id);
-  db.prepare('DELETE FROM highlights WHERE book_id = ?').run(id);
-  db.prepare('DELETE FROM books WHERE id = ?').run(id);
-
-  // Clean up files
-  if (book.file_path && fs.existsSync(book.file_path)) fs.unlinkSync(book.file_path);
-  if (book.cover_image) {
-    const coverPath = path.join(__dirname, '..', book.cover_image);
-    if (fs.existsSync(coverPath)) fs.unlinkSync(coverPath);
-  }
-
-  res.json({ message: 'Book deleted successfully' });
+  res.json({ message: 'Deletion request sent to librarian for approval' });
 });
 
 /**
  * POST /api/books/bulk-delete
- * Author bulk deletes their own books
+ * Author bulk-requests deletion of their own books (sends to librarian)
  */
 router.post('/bulk-delete', authenticate, authorize('author'), (req, res) => {
   const { book_ids } = req.body;
@@ -763,7 +851,7 @@ router.post('/bulk-delete', authenticate, authorize('author'), (req, res) => {
     return res.status(400).json({ error: 'No books selected' });
   }
 
-  const deleted = [];
+  const requested = [];
   const errors = [];
 
   const bulkDelete = db.transaction(() => {
@@ -771,17 +859,27 @@ router.post('/bulk-delete', authenticate, authorize('author'), (req, res) => {
       const book = db.prepare('SELECT * FROM books WHERE id = ? AND author_id = ?').get(bookId, req.user.id);
       if (!book) { errors.push(`Book not found: ${bookId}`); continue; }
       if (book.availability === 'borrowed') { errors.push(`"${book.title}" is currently borrowed`); continue; }
+      if (book.status === 'pending_deletion') { errors.push(`"${book.title}" already pending deletion`); continue; }
 
-      db.prepare('DELETE FROM bookmarks WHERE book_id = ?').run(bookId);
-      db.prepare('DELETE FROM highlights WHERE book_id = ?').run(bookId);
-      db.prepare('DELETE FROM books WHERE id = ?').run(bookId);
-      if (book.file_path && fs.existsSync(book.file_path)) fs.unlinkSync(book.file_path);
-      deleted.push(book.title);
+      db.prepare("UPDATE books SET status = 'pending_deletion' WHERE id = ?").run(bookId);
+      requested.push(book.title);
+    }
+
+    // Notify librarians about bulk deletion requests
+    if (requested.length > 0) {
+      const librarians = db.prepare("SELECT id FROM users WHERE role = 'librarian'").all();
+      const author = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user.id);
+      for (const lib of librarians) {
+        db.prepare(`
+          INSERT INTO notifications (id, user_id, type, title, message, priority, category)
+          VALUES (?, ?, 'delete_request', 'Bulk Deletion Request', ?, 'normal', 'submissions')
+        `).run(uuidv4(), lib.id, `Author "${author.full_name}" has requested deletion of ${requested.length} book(s).`);
+      }
     }
   });
 
   bulkDelete();
-  res.json({ message: `${deleted.length} book(s) deleted`, deleted, errors });
+  res.json({ message: `${requested.length} book(s) deletion requested`, deleted: requested, errors });
 });
 
 /* =============================================

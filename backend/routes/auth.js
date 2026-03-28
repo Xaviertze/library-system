@@ -116,6 +116,11 @@ router.post('/login', (req, res) => {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
+  // Check if account is deactivated
+  if (user.active === 0) {
+    return res.status(403).json({ error: 'Unable to login. Account deactivated by librarian.' });
+  }
+
   // Generate JWT token
   const token = generateToken(user);
 

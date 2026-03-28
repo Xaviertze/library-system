@@ -123,6 +123,8 @@ function initializeDatabase() {
 
   // Migrate existing database if the books table was created without 'draft' in its constraint
   migrateAddDraftStatus();
+  // Migrate books table to support 'pending_deletion' status
+  migrateAddPendingDeletion();
   // Run new column migrations
   migrateAddNewColumns();
 
@@ -174,6 +176,68 @@ function migrateAddDraftStatus() {
     });
     migrate();
     console.log('\u2705 Migrated books table: added draft status support');
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+}
+
+/**
+ * Migration: add 'pending_deletion' to books status CHECK constraint.
+ * Only runs when the existing table is missing the value.
+ */
+function migrateAddPendingDeletion() {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='books'"
+  ).get();
+
+  if (!row || row.sql.includes("'pending_deletion'")) return;
+
+  // Check which optional columns already exist
+  const hasColumn = (table, column) => {
+    const info = db.prepare(`PRAGMA table_info(${table})`).all();
+    return info.some(col => col.name === column);
+  };
+  const hasCover = hasColumn('books', 'cover_image');
+  const hasRejection = hasColumn('books', 'rejection_reason');
+
+  db.pragma('foreign_keys = OFF');
+  try {
+    const migrate = db.transaction(() => {
+      db.prepare(`
+        CREATE TABLE books_v3 (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          author_id TEXT NOT NULL,
+          author_name TEXT NOT NULL,
+          genre TEXT NOT NULL,
+          description TEXT NOT NULL,
+          file_path TEXT,
+          file_name TEXT,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK(status IN ('pending', 'approved', 'rejected', 'draft', 'pending_deletion')),
+          availability TEXT NOT NULL DEFAULT 'available'
+            CHECK(availability IN ('available', 'borrowed')),
+          publish_date DATETIME,
+          submitted_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+          draft_data TEXT,
+          times_borrowed INTEGER DEFAULT 0,
+          cover_image TEXT,
+          rejection_reason TEXT,
+          FOREIGN KEY (author_id) REFERENCES users(id)
+        )
+      `).run();
+      // Build column list based on what exists in the old table
+      const baseCols = 'id, title, author_id, author_name, genre, description, file_path, file_name, status, availability, publish_date, submitted_date, draft_data, times_borrowed';
+      const extraCols = [
+        hasCover ? 'cover_image' : "NULL as cover_image",
+        hasRejection ? 'rejection_reason' : "NULL as rejection_reason",
+      ].join(', ');
+      db.prepare(`INSERT INTO books_v3 SELECT ${baseCols}, ${extraCols} FROM books`).run();
+      db.prepare('DROP TABLE books').run();
+      db.prepare('ALTER TABLE books_v3 RENAME TO books').run();
+    });
+    migrate();
+    console.log('\u2705 Migrated books table: added pending_deletion status support');
   } finally {
     db.pragma('foreign_keys = ON');
   }

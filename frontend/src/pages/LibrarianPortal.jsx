@@ -310,11 +310,40 @@ export default function LibrarianPortal() {
   const pendingIds = books.filter(b => b.status === 'pending').map(b => b.id);
   const allPendingSelected = pendingIds.length > 0 && selected.size === pendingIds.length;
 
+  const handleApproveDelete = async (bookId) => {
+    setActionLoading(true);
+    try {
+      await api.patch(`/books/${bookId}/approve-delete`);
+      setFeedback('✓ Book deletion approved');
+      loadBooks();
+      setTimeout(() => setFeedback(''), 4000);
+    } catch (err) {
+      setFeedback('⚠ ' + (err.response?.data?.error || 'Failed'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectDelete = async (bookId) => {
+    setActionLoading(true);
+    try {
+      await api.patch(`/books/${bookId}/reject-delete`);
+      setFeedback('✓ Deletion request rejected, book restored');
+      loadBooks();
+      setTimeout(() => setFeedback(''), 4000);
+    } catch (err) {
+      setFeedback('⚠ ' + (err.response?.data?.error || 'Failed'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const statusBadge = (status) => {
     const map = {
       pending: <span className="badge badge-pending">⏳ Pending</span>,
       approved: <span className="badge badge-available">✓ Approved</span>,
       rejected: <span className="badge badge-unavailable">✕ Rejected</span>,
+      pending_deletion: <span className="badge badge-unavailable">🗑 Pending Deletion</span>,
     };
     return map[status] || <span className="badge badge-genre">{status}</span>;
   };
@@ -381,6 +410,7 @@ export default function LibrarianPortal() {
                   <option value="pending">Pending</option>
                   <option value="approved">Approved</option>
                   <option value="rejected">Rejected</option>
+                  <option value="pending_deletion">Pending Deletion</option>
                 </select>
               )}
               <input className="form-input" type="date" value={filters.date_from} onChange={setFilter('date_from')} style={{ flex: '0 0 150px' }} title="From date" />
@@ -482,7 +512,19 @@ export default function LibrarianPortal() {
                                 </button>
                               </>
                             )}
-                            {book.status !== 'pending' && !book.file_name && (
+                            {book.status === 'pending_deletion' && (
+                              <>
+                                <button className="btn btn-danger btn-sm" onClick={() => handleApproveDelete(book.id)}
+                                  disabled={actionLoading}>
+                                  ✓ Approve Delete
+                                </button>
+                                <button className="btn btn-ghost btn-sm" onClick={() => handleRejectDelete(book.id)}
+                                  disabled={actionLoading}>
+                                  ✕ Keep Book
+                                </button>
+                              </>
+                            )}
+                            {!['pending', 'pending_deletion'].includes(book.status) && !book.file_name && (
                               <span style={{ color: 'var(--slate)', fontSize: '0.82rem' }}>—</span>
                             )}
                           </div>

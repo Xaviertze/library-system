@@ -3,17 +3,43 @@
  * Saves and restores application state for crash recovery
  */
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database');
 const { authenticate } = require('../middleware/auth');
 
+const JWT_SECRET = process.env.JWT_SECRET || 'library-system-secret-key-2024';
+
 const router = express.Router();
+
+/**
+ * Middleware that tries standard auth first, then falls back to _token in body
+ * (needed for sendBeacon which cannot set custom headers)
+ */
+function authenticateWithFallback(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authenticate(req, res, next);
+  }
+  // Fallback: check _token in request body (for sendBeacon)
+  const bodyToken = req.body?._token;
+  if (bodyToken) {
+    try {
+      const decoded = jwt.verify(bodyToken, JWT_SECRET);
+      req.user = decoded;
+      return next();
+    } catch {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  }
+  return res.status(401).json({ error: 'Authentication required' });
+}
 
 /**
  * POST /api/recovery/save
  * Save current application state for crash recovery
  */
-router.post('/save', authenticate, (req, res) => {
+router.post('/save', authenticateWithFallback, (req, res) => {
   const { screen, portal, state_data } = req.body;
 
   if (!screen || !portal) {

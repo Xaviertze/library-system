@@ -47,7 +47,8 @@ export function useCrashRecovery(portal, activeTab, stateData = {}) {
       if (!token || !user) return;
       navigator.sendBeacon('/api/recovery/save',
         new Blob([JSON.stringify({
-          screen: activeTab, portal, state_data: stateData
+          screen: activeTab, portal, state_data: stateData,
+          _token: token
         })], { type: 'application/json' })
       );
     };

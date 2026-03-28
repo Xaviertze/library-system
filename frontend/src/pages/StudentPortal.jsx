@@ -3,14 +3,14 @@
  * Browse books, borrow books, view history, see recommendations
  * Extended: PDF reader, bookmarks, highlights, profile, notifications, multi-borrow, borrow limit
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
 import BookModal from '../components/BookModal';
 import PDFReader from '../components/PDFReader';
 import NotificationBoard from '../components/NotificationBoard';
 import ProfileEditor from '../components/ProfileEditor';
-import { useCrashRecovery, CrashTestButton } from '../components/CrashRecovery';
+import { useCrashRecovery } from '../components/CrashRecovery';
 import api from '../utils/api';
 
 const NAV_ITEMS = [
@@ -141,21 +141,11 @@ export default function StudentPortal() {
     return item;
   });
 
-  const crashSave = useCallback(async () => {
-    try {
-      await api.post('/recovery/save', { screen: activeTab, portal: 'student', state_data: { search, filterGenre, filterAvail } });
-    } catch {}
-  }, [activeTab, search, filterGenre, filterAvail]);
-
   return (
     <div className="app-layout">
       <Sidebar navItems={navItemsWithBadge} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <main className="main-content">
-        {/* Crash Test Button */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-          <CrashTestButton onBeforeCrash={crashSave} />
-        </div>
 
         {/* Page Header */}
         <div className="page-header">
@@ -277,6 +267,13 @@ export default function StudentPortal() {
                         onClick={e => { e.stopPropagation(); toggleBorrowSelect(book.id); }}>
                         <input type="checkbox" checked={selectedForBorrow.has(book.id)}
                           onChange={() => toggleBorrowSelect(book.id)} />
+                      </div>
+                    )}
+                    {book.cover_image && (
+                      <div style={{ marginBottom: 10, borderRadius: 6, overflow: 'hidden', maxHeight: 160 }}>
+                        <img src={`/${book.cover_image}`} alt={book.title}
+                          style={{ width: '100%', objectFit: 'cover', maxHeight: 160 }}
+                          onError={e => { e.target.style.display = 'none'; }} />
                       </div>
                     )}
                     <div className="book-title">{book.title}</div>

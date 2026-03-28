@@ -13,10 +13,23 @@ export function AuthProvider({ children }) {
 
   // Restore session from localStorage on app start
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    if (savedUser && token) {
-      setUser(JSON.parse(savedUser));
+    try {
+      const savedUser = localStorage.getItem('user');
+      const token = localStorage.getItem('token');
+      if (savedUser && token) {
+        const parsed = JSON.parse(savedUser);
+        if (parsed && parsed.id && parsed.role) {
+          setUser(parsed);
+        } else {
+          // Corrupted user data — clear session
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+        }
+      }
+    } catch {
+      // Corrupted localStorage — clear and start fresh
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
     }
     setLoading(false);
   }, []);

@@ -71,7 +71,7 @@ router.put('/profile', authenticate, (req, res) => {
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!bcrypt.compareSync(current_password, user.password_hash)) {
-    return res.status(401).json({ error: 'Current password is incorrect' });
+    return res.status(403).json({ error: 'Current password is incorrect' });
   }
 
   const errors = {};
@@ -108,7 +108,7 @@ router.put('/password', authenticate, (req, res) => {
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!bcrypt.compareSync(current_password, user.password_hash)) {
-    return res.status(401).json({ error: 'Current password is incorrect' });
+    return res.status(403).json({ error: 'Current password is incorrect' });
   }
 
   // Validate new password strength

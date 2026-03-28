@@ -112,6 +112,10 @@ export default function ProfileEditor({ showFields = ['full_name', 'password'], 
     try {
       const { data } = await api.post('/users/profile-picture', fd);
       setMsg('Profile picture updated!');
+      // Update localStorage so sidebar and other components reflect the new picture
+      const savedUser = JSON.parse(localStorage.getItem('user') || '{}');
+      savedUser.profile_picture = data.profile_picture;
+      localStorage.setItem('user', JSON.stringify(savedUser));
       loadProfile();
       setTimeout(() => setMsg(''), 3000);
     } catch (err) {
@@ -141,7 +145,7 @@ export default function ProfileEditor({ showFields = ['full_name', 'password'], 
             fontFamily: 'var(--font-display)', overflow: 'hidden', flexShrink: 0
           }}>
             {profile.profile_picture ? (
-              <img src={`/api/../${profile.profile_picture}`} alt="Avatar"
+              <img src={`/${profile.profile_picture}`} alt="Avatar"
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 onError={e => { e.target.style.display = 'none'; e.target.parentNode.textContent = profile.full_name?.[0]?.toUpperCase(); }}
               />

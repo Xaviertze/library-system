@@ -45,6 +45,15 @@ export default function BookModal({ book, onClose, onBorrowed }) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
+        {/* Cover Image */}
+        {book.cover_image && (
+          <div style={{ marginBottom: 16, borderRadius: 8, overflow: 'hidden', maxHeight: 200 }}>
+            <img src={`/${book.cover_image}`} alt={book.title}
+              style={{ width: '100%', objectFit: 'cover', maxHeight: 200 }}
+              onError={e => { e.target.style.display = 'none'; }} />
+          </div>
+        )}
+
         {/* Badges */}
         <div className="book-meta" style={{ marginBottom: 16 }}>
           {book.genre?.split(',').map(g => (
