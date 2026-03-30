@@ -145,7 +145,7 @@ export default function ProfileEditor({ showFields = ['full_name', 'password'], 
             fontFamily: 'var(--font-display)', overflow: 'hidden', flexShrink: 0
           }}>
             {profile.profile_picture ? (
-              <img src={`/${profile.profile_picture}`} alt="Avatar"
+              <img src={`/uploads/${profile.profile_picture.replace(/^uploads\//, '')}`} alt="Avatar"
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 onError={e => { e.target.style.display = 'none'; e.target.parentNode.textContent = profile.full_name?.[0]?.toUpperCase(); }}
               />

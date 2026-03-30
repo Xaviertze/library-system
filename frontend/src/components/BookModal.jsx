@@ -46,11 +46,15 @@ export default function BookModal({ book, onClose, onBorrowed }) {
         </div>
 
         {/* Cover Image */}
-        {book.cover_image && (
+        {book.cover_image ? (
           <div style={{ marginBottom: 16, borderRadius: 8, overflow: 'hidden', maxHeight: 200 }}>
-            <img src={`/${book.cover_image}`} alt={book.title}
+            <img src={`/uploads/${book.cover_image.replace(/^uploads\//, '')}`} alt={book.title}
               style={{ width: '100%', objectFit: 'cover', maxHeight: 200 }}
-              onError={e => { e.target.style.display = 'none'; }} />
+              onError={e => { e.target.style.display = 'none'; e.target.parentNode.style.display = 'none'; }} />
+          </div>
+        ) : (
+          <div style={{ marginBottom: 16, borderRadius: 8, height: 140, background: 'var(--ink-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem', color: 'var(--parchment-border)' }}>
+            📖
           </div>
         )}
 

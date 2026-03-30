@@ -313,7 +313,7 @@ export default function AuthorPortal() {
   };
 
   const canEdit = (book) => book.status === 'pending' || (book.status === 'approved' && book.availability !== 'borrowed');
-  const canDelete = (book) => book.availability !== 'borrowed' && book.status !== 'pending_deletion';
+  const canDelete = (book) => book.status !== 'pending_deletion';
 
   // Nav items with unread badge
   const navItemsWithBadge = NAV_ITEMS.map(item => {
@@ -638,7 +638,7 @@ export default function AuthorPortal() {
         {/* Profile Tab */}
         {activeTab === 'profile' && (
           <ProfileEditor
-            showFields={['full_name', 'password', 'bio']}
+            showFields={['full_name', 'password', 'bio', 'profile_picture']}
             onPasswordChanged={logout}
           />
         )}

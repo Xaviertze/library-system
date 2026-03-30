@@ -269,11 +269,15 @@ export default function StudentPortal() {
                           onChange={() => toggleBorrowSelect(book.id)} />
                       </div>
                     )}
-                    {book.cover_image && (
+                    {book.cover_image ? (
                       <div style={{ marginBottom: 10, borderRadius: 6, overflow: 'hidden', maxHeight: 160 }}>
-                        <img src={`/${book.cover_image}`} alt={book.title}
+                        <img src={`/uploads/${book.cover_image.replace(/^uploads\//, '')}`} alt={book.title}
                           style={{ width: '100%', objectFit: 'cover', maxHeight: 160 }}
-                          onError={e => { e.target.style.display = 'none'; }} />
+                          onError={e => { e.target.style.display = 'none'; e.target.parentNode.style.display = 'none'; }} />
+                      </div>
+                    ) : (
+                      <div style={{ marginBottom: 10, borderRadius: 6, height: 120, background: 'var(--ink-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.5rem', color: 'var(--parchment-border)' }}>
+                        📖
                       </div>
                     )}
                     <div className="book-title">{book.title}</div>

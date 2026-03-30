@@ -8,6 +8,19 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../database');
 const { generateToken } = require('../middleware/auth');
 
+/**
+ * Notify all librarians about an event
+ */
+function notifyLibrarians(type, title, message, category, relatedId) {
+  const librarians = db.prepare("SELECT id FROM users WHERE role = 'librarian'").all();
+  for (const lib of librarians) {
+    db.prepare(`
+      INSERT INTO notifications (id, user_id, type, title, message, category, related_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(uuidv4(), lib.id, type, title, message, category, relatedId || null);
+  }
+}
+
 const router = express.Router();
 
 /**
@@ -89,6 +102,15 @@ router.post('/register', (req, res) => {
     role === 'librarian' ? (employee_id || null) : null
   );
 
+  // Notify librarians about new registration
+  notifyLibrarians(
+    'user_update',
+    'New User Registered',
+    `New user registered: ${username.trim()} (${role})`,
+    'users',
+    id
+  );
+
   res.status(201).json({ message: 'Account created successfully! Please log in.' });
 });
 
@@ -132,7 +154,8 @@ router.post('/login', (req, res) => {
       full_name: user.full_name,
       role: user.role,
       bio: user.bio,
-      employee_id: user.employee_id
+      employee_id: user.employee_id,
+      profile_picture: user.profile_picture
     }
   });
 });

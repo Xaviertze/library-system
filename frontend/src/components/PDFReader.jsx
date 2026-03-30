@@ -218,6 +218,15 @@ export default function PDFReader({ book, onClose }) {
             <span style={{ fontSize: '0.8rem', color: 'var(--gold)' }}>by {book.author_name}</span>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--slate)' }}>Page:</span>
+              <input
+                type="number" min="1" value={currentPage}
+                onChange={e => { const v = parseInt(e.target.value); if (v >= 1) setCurrentPage(v); }}
+                style={{ width: 52, padding: '3px 6px', fontSize: '0.82rem', textAlign: 'center', borderRadius: 4, border: '1px solid var(--parchment-border)', background: 'var(--ink-light)', color: 'var(--parchment)' }}
+                title="Current page number"
+              />
+            </div>
             <button className="btn btn-sm btn-ghost" onClick={bookmarkCurrentPage}
               title="Bookmark current page">
               Bookmark Page
@@ -311,7 +320,7 @@ export default function PDFReader({ book, onClose }) {
                       <input className="form-input" placeholder="Label (optional)"
                         value={newBookmark.label} onChange={e => setNewBookmark(b => ({ ...b, label: e.target.value }))}
                         style={{ padding: '8px 10px', fontSize: '0.85rem' }} />
-                      <button className="btn btn-primary btn-sm" onClick={addBookmark} disabled={!newBookmark.page}>
+                      <button className="btn btn-primary btn-sm" onClick={() => addBookmark()} disabled={!newBookmark.page}>
                         Save Bookmark
                       </button>
                     </div>
@@ -323,8 +332,14 @@ export default function PDFReader({ book, onClose }) {
                       <div key={bm.id} style={{
                         padding: '10px 12px', borderRadius: 8,
                         background: 'var(--parchment-dim)', marginBottom: 8,
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                      }}>
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        cursor: 'pointer'
+                      }} onClick={() => {
+                        setCurrentPage(bm.page_number);
+                        if (iframeRef.current && blobUrl) {
+                          iframeRef.current.src = blobUrl + '#page=' + bm.page_number;
+                        }
+                      }} title={`Go to page ${bm.page_number}`}>
                         <div>
                           <div style={{ fontWeight: 500, fontSize: '0.9rem', color: 'var(--parchment)' }}>
                             Page {bm.page_number}
@@ -332,7 +347,7 @@ export default function PDFReader({ book, onClose }) {
                           {bm.label && <div style={{ fontSize: '0.78rem', color: 'var(--slate)' }}>{bm.label}</div>}
                         </div>
                         <button className="btn btn-ghost btn-sm" style={{ padding: '2px 8px' }}
-                          onClick={() => removeBookmark(bm.id)}>✕</button>
+                          onClick={(e) => { e.stopPropagation(); removeBookmark(bm.id); }}>✕</button>
                       </div>
                     ))}
                   </div>
@@ -360,7 +375,7 @@ export default function PDFReader({ book, onClose }) {
                             }} />
                         ))}
                       </div>
-                      <button className="btn btn-primary btn-sm" onClick={addHighlight}
+                      <button className="btn btn-primary btn-sm" onClick={() => addHighlight()}
                         disabled={!newHighlight.page || !newHighlight.text}>
                         Save Highlight
                       </button>

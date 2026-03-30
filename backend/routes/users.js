@@ -83,6 +83,8 @@ router.put('/profile', authenticate, (req, res) => {
     return res.status(400).json({ errors });
   }
 
+  const oldName = user.full_name;
+
   db.prepare(`
     UPDATE users SET full_name = ?, bio = ?, employee_id = ? WHERE id = ?
   `).run(
@@ -91,6 +93,17 @@ router.put('/profile', authenticate, (req, res) => {
     user.role === 'librarian' ? (employee_id || null) : user.employee_id,
     req.user.id
   );
+
+  // Notify librarians if user changed their name
+  if (full_name.trim() !== oldName) {
+    const librarians = db.prepare("SELECT id FROM users WHERE role = 'librarian' AND id != ?").all(req.user.id);
+    for (const lib of librarians) {
+      db.prepare(`
+        INSERT INTO notifications (id, user_id, type, title, message, category, related_id)
+        VALUES (?, ?, 'user_update', 'User Profile Changed', ?, 'users', ?)
+      `).run(uuidv4(), lib.id, `User ${oldName} has changed their name to ${full_name.trim()}`, req.user.id);
+    }
+  }
 
   res.json({ message: 'Profile updated successfully' });
 });

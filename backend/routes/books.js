@@ -594,7 +594,17 @@ router.patch('/:id/approve-delete', authenticate, authorize('librarian'), (req, 
     return res.status(404).json({ error: 'No pending deletion request found for this book' });
   }
 
-  // Notify affected users
+  // Auto-return any active borrows before deletion
+  const activeBorrows = db.prepare(
+    "SELECT id, user_id FROM borrow_records WHERE book_id = ? AND status = 'active'"
+  ).all(id);
+  const now = new Date().toISOString();
+  for (const borrow of activeBorrows) {
+    db.prepare("UPDATE borrow_records SET status = 'returned', return_date = ? WHERE id = ?")
+      .run(now, borrow.id);
+  }
+
+  // Notify affected users (anyone who ever borrowed)
   const affectedUsers = db.prepare(
     'SELECT DISTINCT user_id FROM borrow_records WHERE book_id = ?'
   ).all(id);
@@ -818,10 +828,6 @@ router.delete('/:id', authenticate, authorize('author'), (req, res) => {
   const book = db.prepare('SELECT * FROM books WHERE id = ? AND author_id = ?').get(id, req.user.id);
   if (!book) return res.status(404).json({ error: 'Book not found' });
 
-  if (book.availability === 'borrowed') {
-    return res.status(400).json({ error: 'Cannot delete a book that is currently borrowed' });
-  }
-
   if (book.status === 'pending_deletion') {
     return res.status(400).json({ error: 'Deletion request already pending' });
   }
@@ -858,7 +864,6 @@ router.post('/bulk-delete', authenticate, authorize('author'), (req, res) => {
     for (const bookId of book_ids) {
       const book = db.prepare('SELECT * FROM books WHERE id = ? AND author_id = ?').get(bookId, req.user.id);
       if (!book) { errors.push(`Book not found: ${bookId}`); continue; }
-      if (book.availability === 'borrowed') { errors.push(`"${book.title}" is currently borrowed`); continue; }
       if (book.status === 'pending_deletion') { errors.push(`"${book.title}" already pending deletion`); continue; }
 
       db.prepare("UPDATE books SET status = 'pending_deletion' WHERE id = ?").run(bookId);
