@@ -26,29 +26,22 @@ function resolveFilePath(filePath) {
   return fs.existsSync(fallback) ? fallback : null;
 }
 
-// Configure multer for book file uploads
+// Configure multer for file uploads (routes cover images to covers/, book files to books/)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '..', 'uploads', 'books');
+    const dir = file.fieldname === 'cover_image' ? 'covers' : 'books';
+    const uploadDir = path.join(__dirname, '..', 'uploads', dir);
     if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueName = `${uuidv4()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    cb(null, uniqueName);
-  }
-});
-
-// Configure multer for book cover image uploads
-const coverStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '..', 'uploads', 'covers');
-    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
+    if (file.fieldname === 'cover_image') {
+      const ext = path.extname(file.originalname);
+      cb(null, `${uuidv4()}${ext}`);
+    } else {
+      const uniqueName = `${uuidv4()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      cb(null, uniqueName);
+    }
   }
 });
 
@@ -734,6 +727,31 @@ router.get('/view/:id', authenticate, (req, res) => {
   };
 
   res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `inline; filename="${book.file_name}"`);
+  fs.createReadStream(resolved).pipe(res);
+});
+
+/**
+ * GET /api/books/quick-review/:id
+ * Quick review: serves the full PDF for preview but frontend limits to first pages.
+ * Available to all authenticated users for approved books.
+ */
+router.get('/quick-review/:id', authenticate, (req, res) => {
+  const book = db.prepare(
+    "SELECT file_path, file_name FROM books WHERE id = ? AND status = 'approved'"
+  ).get(req.params.id);
+  const resolved = resolveFilePath(book?.file_path);
+
+  if (!book || !resolved) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  const ext = path.extname(book.file_name || '').toLowerCase();
+  if (ext !== '.pdf') {
+    return res.status(400).json({ error: 'Quick review is only available for PDF books' });
+  }
+
+  res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${book.file_name}"`);
   fs.createReadStream(resolved).pipe(res);
 });

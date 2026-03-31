@@ -8,6 +8,7 @@ import Sidebar from '../components/Sidebar';
 import NotificationBoard from '../components/NotificationBoard';
 import ProfileEditor from '../components/ProfileEditor';
 import { useCrashRecovery, CrashTestButton } from '../components/CrashRecovery';
+import { useRecovery } from '../App';
 import api from '../utils/api';
 
 const NAV_ITEMS = [
@@ -98,7 +99,8 @@ function BookPreviewModal({ book, onClose }) {
 }
 
 export default function LibrarianPortal() {
-  const [activeTab, setActiveTab] = useState('pending');
+  const { recoveryState, clearRecoveryState } = useRecovery();
+  const [activeTab, setActiveTab] = useState(() => recoveryState?.screen || 'pending');
   const [books, setBooks] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(true);
@@ -128,6 +130,11 @@ export default function LibrarianPortal() {
   const [borrowRecords, setBorrowRecords] = useState([]);
   const [borrowFilters, setBorrowFilters] = useState({ search: '', status: '', date_from: '', date_to: '' });
   const [borrowLoading, setBorrowLoading] = useState(false);
+
+  // Clear recovery state after it has been consumed
+  useEffect(() => {
+    if (recoveryState) clearRecoveryState();
+  }, []);
 
   // Crash recovery
   useCrashRecovery('librarian', activeTab);
@@ -455,7 +462,9 @@ export default function LibrarianPortal() {
                   <thead>
                     <tr>
                       <th style={{ width: 40 }}>
-                        <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAll} title="Select all pending" />
+                        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: '4px' }}>
+                          <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAll} title="Select all pending" style={{ width: 18, height: 18 }} />
+                        </label>
                       </th>
                       <th>Title</th>
                       <th>Author</th>
@@ -468,9 +477,11 @@ export default function LibrarianPortal() {
                   <tbody>
                     {books.map(book => (
                       <tr key={book.id}>
-                        <td>
+                        <td onClick={() => book.status === 'pending' && toggleSelect(book.id)} style={{ cursor: book.status === 'pending' ? 'pointer' : 'default' }}>
                           {book.status === 'pending' && (
-                            <input type="checkbox" checked={selected.has(book.id)} onChange={() => toggleSelect(book.id)} />
+                            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: '4px' }}>
+                              <input type="checkbox" checked={selected.has(book.id)} onChange={() => toggleSelect(book.id)} style={{ width: 18, height: 18 }} />
+                            </label>
                           )}
                         </td>
                         <td>

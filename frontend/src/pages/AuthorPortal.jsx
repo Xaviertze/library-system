@@ -9,6 +9,7 @@ import Sidebar from '../components/Sidebar';
 import NotificationBoard from '../components/NotificationBoard';
 import ProfileEditor from '../components/ProfileEditor';
 import { useCrashRecovery } from '../components/CrashRecovery';
+import { useRecovery } from '../App';
 import api from '../utils/api';
 
 const NAV_ITEMS = [
@@ -34,7 +35,8 @@ const STATUS_CONFIG = {
 
 export default function AuthorPortal() {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('publish');
+  const { recoveryState, clearRecoveryState } = useRecovery();
+  const [activeTab, setActiveTab] = useState(() => recoveryState?.screen || 'publish');
   const [submissions, setSubmissions] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -72,6 +74,11 @@ export default function AuthorPortal() {
     genre: [],
     description: '',
   });
+
+  // Clear recovery state after it has been consumed
+  useEffect(() => {
+    if (recoveryState) clearRecoveryState();
+  }, []);
 
   // Crash recovery
   useCrashRecovery('author', activeTab, { form, draftId });
@@ -540,14 +547,17 @@ export default function AuthorPortal() {
                       <div className="flex justify-between items-center mb-4">
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           {bulkDeleteMode && canDelete(book) && (
-                            <input type="checkbox" checked={selectedForDelete.has(book.id)}
-                              onChange={() => {
-                                setSelectedForDelete(prev => {
-                                  const next = new Set(prev);
-                                  next.has(book.id) ? next.delete(book.id) : next.add(book.id);
-                                  return next;
-                                });
-                              }} />
+                            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '4px' }}>
+                              <input type="checkbox" checked={selectedForDelete.has(book.id)}
+                                style={{ width: 18, height: 18 }}
+                                onChange={() => {
+                                  setSelectedForDelete(prev => {
+                                    const next = new Set(prev);
+                                    next.has(book.id) ? next.delete(book.id) : next.add(book.id);
+                                    return next;
+                                  });
+                                }} />
+                            </label>
                           )}
                           <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem' }}>{book.title}</h3>
                         </div>

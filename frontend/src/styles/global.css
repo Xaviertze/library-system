@@ -972,6 +972,37 @@ input[type="range"] {
   accent-color: var(--gold);
 }
 
+/* ---- PDF.js Text Layer ---- */
+.pdf-text-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+}
+.pdf-text-layer span,
+.pdf-text-layer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0% 0%;
+  pointer-events: all;
+}
+.pdf-text-layer ::selection {
+  background: rgba(201, 168, 76, 0.4);
+}
+.pdf-page-label {
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  color: var(--slate);
+  white-space: nowrap;
+}
+
 /* ---- Table responsive improvements ---- */
 @media (max-width: 768px) {
   .filter-bar {

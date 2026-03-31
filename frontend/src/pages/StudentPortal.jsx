@@ -8,9 +8,11 @@ import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
 import BookModal from '../components/BookModal';
 import PDFReader from '../components/PDFReader';
+import QuickReview from '../components/QuickReview';
 import NotificationBoard from '../components/NotificationBoard';
 import ProfileEditor from '../components/ProfileEditor';
 import { useCrashRecovery } from '../components/CrashRecovery';
+import { useRecovery } from '../App';
 import api from '../utils/api';
 
 const NAV_ITEMS = [
@@ -23,16 +25,18 @@ const NAV_ITEMS = [
 
 export default function StudentPortal() {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('browse');
+  const { recoveryState, clearRecoveryState } = useRecovery();
+  const [activeTab, setActiveTab] = useState(() => recoveryState?.screen || 'browse');
   const [books, setBooks] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [borrows, setBorrows] = useState([]);
   const [borrowInfo, setBorrowInfo] = useState({ active_count: 0, borrow_limit: 5 });
   const [selectedBook, setSelectedBook] = useState(null);
-  const [readingBook, setReadingBook] = useState(null); // for PDF reader
-  const [search, setSearch] = useState('');
-  const [filterGenre, setFilterGenre] = useState('');
-  const [filterAvail, setFilterAvail] = useState('');
+  const [readingBook, setReadingBook] = useState(() => recoveryState?.readingBook || null);
+  const [previewBook, setPreviewBook] = useState(null); // for quick review
+  const [search, setSearch] = useState(() => recoveryState?.search || '');
+  const [filterGenre, setFilterGenre] = useState(() => recoveryState?.filterGenre || '');
+  const [filterAvail, setFilterAvail] = useState(() => recoveryState?.filterAvail || '');
   const [filterDate, setFilterDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [confirmReturn, setConfirmReturn] = useState(null);
@@ -45,8 +49,19 @@ export default function StudentPortal() {
   const [multiBorrowDuration, setMultiBorrowDuration] = useState(7);
   const [multiBorrowLoading, setMultiBorrowLoading] = useState(false);
 
-  // Crash recovery
-  useCrashRecovery('student', activeTab, { search, filterGenre, filterAvail });
+  // Clear recovery state after it has been consumed
+  useEffect(() => {
+    if (recoveryState) clearRecoveryState();
+  }, []);
+
+  // Crash recovery — include reading book info
+  useCrashRecovery('student', activeTab, {
+    search, filterGenre, filterAvail,
+    readingBook: readingBook ? {
+      book_id: readingBook.book_id, title: readingBook.title,
+      author_name: readingBook.author_name, file_name: readingBook.file_name,
+    } : null,
+  });
 
   useEffect(() => { loadData(); }, [activeTab]);
   useEffect(() => { loadUnreadCount(); }, [activeTab]);
@@ -259,15 +274,25 @@ export default function StudentPortal() {
               <div className="card-grid">
                 {filtered.map(book => (
                   <div key={book.id} className="book-card"
-                    onClick={() => !multiBorrowMode && setSelectedBook(book)}
-                    style={multiBorrowMode && selectedForBorrow.has(book.id) ? { borderColor: 'var(--gold)', boxShadow: '0 0 0 2px var(--gold-dim)' } : {}}
+                    onClick={() => {
+                      if (multiBorrowMode && book.availability === 'available') {
+                        toggleBorrowSelect(book.id);
+                      } else if (!multiBorrowMode) {
+                        setSelectedBook(book);
+                      }
+                    }}
+                    style={{
+                      ...(multiBorrowMode && selectedForBorrow.has(book.id) ? { borderColor: 'var(--gold)', boxShadow: '0 0 0 2px var(--gold-dim)' } : {}),
+                      ...(multiBorrowMode && book.availability === 'available' ? { cursor: 'pointer' } : {}),
+                    }}
                   >
                     {multiBorrowMode && book.availability === 'available' && (
-                      <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 1 }}
-                        onClick={e => { e.stopPropagation(); toggleBorrowSelect(book.id); }}>
+                      <label style={{ position: 'absolute', top: 0, right: 0, zIndex: 1, padding: 12, cursor: 'pointer' }}
+                        onClick={e => e.stopPropagation()}>
                         <input type="checkbox" checked={selectedForBorrow.has(book.id)}
-                          onChange={() => toggleBorrowSelect(book.id)} />
-                      </div>
+                          onChange={() => toggleBorrowSelect(book.id)}
+                          style={{ width: 18, height: 18 }} />
+                      </label>
                     )}
                     {book.cover_image ? (
                       <div style={{ marginBottom: 10, borderRadius: 6, overflow: 'hidden', maxHeight: 160 }}>
@@ -296,8 +321,18 @@ export default function StudentPortal() {
                         Published: {new Date(book.publish_date).toLocaleDateString()}
                       </div>
                     )}
-                    <div style={{ fontSize: '0.75rem', color: 'var(--slate)', marginTop: 4 }}>
-                      {multiBorrowMode ? 'Click checkbox to select' : 'Click to read more & borrow →'}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--slate)' }}>
+                        {multiBorrowMode ? 'Click checkbox to select' : 'Click to read more & borrow →'}
+                      </span>
+                      {!multiBorrowMode && book.file_name?.toLowerCase().endsWith('.pdf') && (
+                        <button className="btn btn-ghost btn-sm"
+                          style={{ padding: '3px 10px', fontSize: '0.72rem' }}
+                          onClick={e => { e.stopPropagation(); setPreviewBook(book); }}
+                          title="Preview first pages">
+                          Quick Review
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -466,6 +501,11 @@ export default function StudentPortal() {
       {/* PDF Reader Modal */}
       {readingBook && (
         <PDFReader book={readingBook} onClose={() => setReadingBook(null)} />
+      )}
+
+      {/* Quick Review Modal */}
+      {previewBook && (
+        <QuickReview book={previewBook} onClose={() => setPreviewBook(null)} />
       )}
     </div>
   );

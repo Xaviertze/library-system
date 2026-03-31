@@ -1,16 +1,19 @@
 /**
  * Crash Recovery System
  * Saves state periodically and offers recovery after crash/reload
+ * Persists to both backend and localStorage for reliability
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 
+const LS_KEY = 'bibliovault_crash_recovery';
+
 /**
  * Hook for crash recovery state management
  * @param {string} portal - Portal identifier (student, author, librarian)
  * @param {string} activeTab - Current active tab
- * @param {object} stateData - Current state to save
+ * @param {object} stateData - Current state to save (search, filters, reading book, etc.)
  */
 export function useCrashRecovery(portal, activeTab, stateData = {}) {
   const { user } = useAuth();
@@ -19,12 +22,20 @@ export function useCrashRecovery(portal, activeTab, stateData = {}) {
   // Save state on tab changes and periodically
   const saveState = useCallback(async () => {
     if (!user) return;
+    const payload = { screen: activeTab, portal, state_data: stateData };
+
+    // Always save to localStorage (instant, reliable)
     try {
-      await api.post('/recovery/save', {
-        screen: activeTab,
-        portal,
-        state_data: stateData
-      });
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        ...payload,
+        user_id: user.id,
+        updated_at: new Date().toISOString()
+      }));
+    } catch {}
+
+    // Also save to backend
+    try {
+      await api.post('/recovery/save', payload);
     } catch {}
   }, [user, activeTab, portal, stateData]);
 
@@ -42,7 +53,16 @@ export function useCrashRecovery(portal, activeTab, stateData = {}) {
   // Save before unload
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // Use sendBeacon for reliable save on close
+      // Save to localStorage synchronously
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify({
+          screen: activeTab, portal, state_data: stateData,
+          user_id: user?.id,
+          updated_at: new Date().toISOString()
+        }));
+      } catch {}
+
+      // Use sendBeacon for reliable save to backend on close
       const token = localStorage.getItem('token');
       if (!token || !user) return;
       navigator.sendBeacon('/api/recovery/save',
@@ -61,7 +81,7 @@ export function useCrashRecovery(portal, activeTab, stateData = {}) {
 
 /**
  * Crash Recovery Dialog
- * Shows when recovery data is available
+ * Shows when recovery data is available (checks both localStorage and backend)
  */
 export function CrashRecoveryDialog({ onRecover, onDismiss }) {
   const { user } = useAuth();
@@ -74,12 +94,33 @@ export function CrashRecoveryDialog({ onRecover, onDismiss }) {
   }, [user]);
 
   const checkRecovery = async () => {
+    let best = null;
+
+    // Check localStorage first (faster, more reliable for crash)
+    try {
+      const stored = localStorage.getItem(LS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.user_id === user.id && parsed.screen) {
+          best = { ...parsed, has_recovery: true };
+        }
+      }
+    } catch {}
+
+    // Also check backend
     try {
       const { data } = await api.get('/recovery/state');
       if (data.has_recovery) {
-        setRecovery(data);
+        // Use whichever is newer
+        if (!best || (data.updated_at && new Date(data.updated_at) > new Date(best.updated_at))) {
+          best = data;
+        }
       }
     } catch {}
+
+    if (best?.has_recovery) {
+      setRecovery(best);
+    }
     setLoading(false);
   };
 
@@ -96,6 +137,7 @@ export function CrashRecoveryDialog({ onRecover, onDismiss }) {
   };
 
   const clearRecovery = async () => {
+    try { localStorage.removeItem(LS_KEY); } catch {}
     try { await api.delete('/recovery/clear'); } catch {}
     setRecovery(null);
   };
@@ -125,6 +167,18 @@ export function CrashRecoveryDialog({ onRecover, onDismiss }) {
               <span style={{ color: 'var(--slate)' }}>Last Screen:</span>
               <span style={{ fontWeight: 500 }}>{recovery.screen}</span>
             </div>
+            {recovery.state_data?.readingBook && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--slate)' }}>Reading:</span>
+                <span style={{ fontWeight: 500 }}>{recovery.state_data.readingBook.title || 'A book'}</span>
+              </div>
+            )}
+            {recovery.state_data?.currentPage && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--slate)' }}>Page:</span>
+                <span style={{ fontWeight: 500 }}>{recovery.state_data.currentPage}</span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--slate)' }}>Saved At:</span>
               <span style={{ fontWeight: 500 }}>{new Date(recovery.updated_at).toLocaleString()}</span>

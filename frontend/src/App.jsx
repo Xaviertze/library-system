@@ -2,7 +2,7 @@
  * Main App Component
  * Handles routing and role-based portal redirection
  */
-import { useState } from 'react';
+import { useState, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
@@ -12,6 +12,10 @@ import AuthorPortal from './pages/AuthorPortal';
 import LibrarianPortal from './pages/LibrarianPortal';
 import { CrashRecoveryDialog } from './components/CrashRecovery';
 import './styles/global.css';
+
+// Context for passing recovery state to portals
+export const RecoveryContext = createContext({ recoveryState: null, clearRecoveryState: () => {} });
+export const useRecovery = () => useContext(RecoveryContext);
 
 /**
  * Protected route wrapper — redirects to login if not authenticated
@@ -52,11 +56,18 @@ function CrashRecoveryWrapper({ children }) {
   const navigate = useNavigate();
   const [recovered, setRecovered] = useState(false);
   const [recoveryMsg, setRecoveryMsg] = useState('');
+  const [recoveryState, setRecoveryState] = useState(null);
 
   const handleRecover = (recoveryData) => {
     try {
       const portalMap = { student: '/student', staff: '/student', author: '/author', librarian: '/librarian' };
       const targetPath = portalMap[recoveryData.portal] || portalMap[user?.role] || '/portal';
+      // Store state_data for the portal to pick up
+      setRecoveryState({
+        screen: recoveryData.screen,
+        portal: recoveryData.portal,
+        ...(recoveryData.state_data || {})
+      });
       navigate(targetPath);
       setRecoveryMsg('Session restored successfully!');
       setTimeout(() => setRecoveryMsg(''), 4000);
@@ -68,7 +79,7 @@ function CrashRecoveryWrapper({ children }) {
   };
 
   return (
-    <>
+    <RecoveryContext.Provider value={{ recoveryState, clearRecoveryState: () => setRecoveryState(null) }}>
       {!recovered && user && (
         <CrashRecoveryDialog
           onRecover={handleRecover}
@@ -88,7 +99,7 @@ function CrashRecoveryWrapper({ children }) {
         </div>
       )}
       {children}
-    </>
+    </RecoveryContext.Provider>
   );
 }
 
