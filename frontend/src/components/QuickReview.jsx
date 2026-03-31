@@ -11,7 +11,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
-const PREVIEW_PAGES = 3;
+const PREVIEW_PAGES = 2;
 const SCALE = 1.2;
 
 export default function QuickReview({ book, onClose }) {

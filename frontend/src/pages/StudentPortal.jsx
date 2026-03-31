@@ -116,6 +116,8 @@ export default function StudentPortal() {
         book_ids: [...selectedForBorrow],
         duration_days: multiBorrowDuration
       });
+      const successCount = selectedForBorrow.size - (data.errors?.length || 0);
+      setBorrowInfo(prev => ({ ...prev, active_count: prev.active_count + successCount }));
       setReturnMsg(data.message + (data.errors?.length ? ` Errors: ${data.errors.join('; ')}` : ''));
       setSelectedForBorrow(new Set());
       setMultiBorrowMode(false);
@@ -494,7 +496,11 @@ export default function StudentPortal() {
         <BookModal
           book={selectedBook}
           onClose={() => setSelectedBook(null)}
-          onBorrowed={() => { loadData(); setSelectedBook(null); }}
+          onBorrowed={() => {
+            setBorrowInfo(prev => ({ ...prev, active_count: prev.active_count + 1 }));
+            loadData();
+            setSelectedBook(null);
+          }}
         />
       )}
 

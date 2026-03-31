@@ -87,6 +87,7 @@ export function CrashRecoveryDialog({ onRecover, onDismiss }) {
   const { user } = useAuth();
   const [recovery, setRecovery] = useState(null);
   const [loading, setLoading] = useState(true);
+  const isCrashTest = sessionStorage.getItem('bibliovault_crash_test') === '1';
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
@@ -149,12 +150,14 @@ export function CrashRecoveryDialog({ onRecover, onDismiss }) {
       <div className="modal" style={{ maxWidth: 440 }}>
         <div className="modal-header">
           <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem' }}>
-            Session Recovery
+            {isCrashTest ? 'Crash Recovery' : 'Session Recovery'}
           </h3>
         </div>
 
         <div className="alert alert-info mb-4">
-          A previous session was found. Would you like to restore your last state?
+          {isCrashTest
+            ? 'A simulated crash was detected. Attempting to restore your last state.'
+            : 'A previous session was found. Would you like to restore your last state?'}
         </div>
 
         <div style={{ background: 'var(--ink-3)', borderRadius: 8, padding: 16, marginBottom: 20 }}>
@@ -207,8 +210,11 @@ export function CrashTestButton({ onBeforeCrash }) {
   const [confirming, setConfirming] = useState(false);
 
   const simulateCrash = async () => {
+    // Save state explicitly before "crash" (in a real crash beforeunload wouldn't fire)
     if (onBeforeCrash) await onBeforeCrash();
-    // Force reload to simulate crash
+    // Mark this as a crash (not a normal reload) so recovery can distinguish
+    sessionStorage.setItem('bibliovault_crash_test', '1');
+    // Force reload simulating abrupt termination
     window.location.reload();
   };
 

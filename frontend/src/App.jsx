@@ -62,6 +62,7 @@ function CrashRecoveryWrapper({ children }) {
     try {
       const portalMap = { student: '/student', staff: '/student', author: '/author', librarian: '/librarian' };
       const targetPath = portalMap[recoveryData.portal] || portalMap[user?.role] || '/portal';
+      if (!targetPath) throw new Error('Unknown portal');
       // Store state_data for the portal to pick up
       setRecoveryState({
         screen: recoveryData.screen,
@@ -69,10 +70,15 @@ function CrashRecoveryWrapper({ children }) {
         ...(recoveryData.state_data || {})
       });
       navigate(targetPath);
+      sessionStorage.removeItem('bibliovault_crash_test');
       setRecoveryMsg('Session restored successfully!');
       setTimeout(() => setRecoveryMsg(''), 4000);
     } catch {
-      setRecoveryMsg('Recovery failed. Starting fresh.');
+      // Restoration failed — clear any partial state and redirect to home/dashboard
+      setRecoveryState(null);
+      sessionStorage.removeItem('bibliovault_crash_test');
+      setRecoveryMsg('Restoration failed');
+      navigate('/portal');
       setTimeout(() => setRecoveryMsg(''), 4000);
     }
     setRecovered(true);
