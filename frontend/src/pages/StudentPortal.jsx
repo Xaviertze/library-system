@@ -3,7 +3,7 @@
  * Browse books, borrow books, view history, see recommendations
  * Extended: PDF reader, bookmarks, highlights, profile, notifications, multi-borrow, borrow limit
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
 import BookModal from '../components/BookModal';
@@ -11,7 +11,7 @@ import PDFReader from '../components/PDFReader';
 import QuickReview from '../components/QuickReview';
 import NotificationBoard from '../components/NotificationBoard';
 import ProfileEditor from '../components/ProfileEditor';
-import { useCrashRecovery } from '../components/CrashRecovery';
+import { useCrashRecovery, CrashTestButton } from '../components/CrashRecovery';
 import { useRecovery } from '../App';
 import api from '../utils/api';
 
@@ -150,6 +150,12 @@ export default function StudentPortal() {
     return matchSearch && matchGenre && matchAvail && matchDate;
   });
 
+  const crashSave = useCallback(async () => {
+    try {
+      await api.post('/recovery/save', { screen: activeTab, portal: 'student', state_data: {} });
+    } catch {}
+  }, [activeTab]);
+
   // Nav items with unread badge
   const navItemsWithBadge = NAV_ITEMS.map(item => {
     if (item.id === 'notifications' && unreadCount > 0) {
@@ -163,6 +169,11 @@ export default function StudentPortal() {
       <Sidebar navItems={navItemsWithBadge} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <main className="main-content">
+        {/* Crash Test */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <CrashTestButton onBeforeCrash={crashSave} />
+        </div>
+
 
         {/* Page Header */}
         <div className="page-header">

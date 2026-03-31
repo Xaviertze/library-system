@@ -3,12 +3,12 @@
  * Publish new books, manage submissions and drafts
  * Extended: edit/delete books, cover image, preview, profile, notifications
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
 import NotificationBoard from '../components/NotificationBoard';
 import ProfileEditor from '../components/ProfileEditor';
-import { useCrashRecovery } from '../components/CrashRecovery';
+import { useCrashRecovery, CrashTestButton } from '../components/CrashRecovery';
 import { useRecovery } from '../App';
 import api from '../utils/api';
 
@@ -322,6 +322,12 @@ export default function AuthorPortal() {
   const canEdit = (book) => book.status === 'pending' || (book.status === 'approved' && book.availability !== 'borrowed');
   const canDelete = (book) => book.status !== 'pending_deletion';
 
+  const crashSave = useCallback(async () => {
+    try {
+      await api.post('/recovery/save', { screen: activeTab, portal: 'student', state_data: {} });
+    } catch {}
+  }, [activeTab]);
+
   // Nav items with unread badge
   const navItemsWithBadge = NAV_ITEMS.map(item => {
     if (item.id === 'notifications' && unreadCount > 0) {
@@ -335,6 +341,11 @@ export default function AuthorPortal() {
       <Sidebar navItems={navItemsWithBadge} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <main className="main-content">
+        {/* Crash Test */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <CrashTestButton onBeforeCrash={crashSave} />
+        </div>
+
         {/* Publish Tab */}
         {activeTab === 'publish' && (
           <div style={{ maxWidth: 700 }}>
