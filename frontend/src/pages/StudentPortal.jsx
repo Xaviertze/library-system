@@ -51,7 +51,11 @@ export default function StudentPortal() {
   const [multiBorrowDuration, setMultiBorrowDuration] = useState(7);
   const [multiBorrowLoading, setMultiBorrowLoading] = useState(false);
 
-  // Restore all state from the session record (refresh OR crash-test recovery)
+  // Notification filter state (lifted so it is included in the session record)
+  const [notifFilter, setNotifFilter] = useState({ category: '', priority: '', search: '' });
+  const [notifShowArchived, setNotifShowArchived] = useState(false);
+
+  // Restore all state from the session record
   useEffect(() => {
     if (!recoveryState) return;
     if (recoveryState.screen)      setActiveTab(recoveryState.screen);
@@ -64,11 +68,13 @@ export default function StudentPortal() {
     if (recoveryState.multiBorrowMode !== undefined) setMultiBorrowMode(recoveryState.multiBorrowMode);
     if (recoveryState.selectedForBorrow) setSelectedForBorrow(new Set(recoveryState.selectedForBorrow));
     if (recoveryState.multiBorrowDuration !== undefined) setMultiBorrowDuration(recoveryState.multiBorrowDuration);
+    if (recoveryState.notifFilter !== undefined) setNotifFilter(recoveryState.notifFilter);
+    if (recoveryState.notifShowArchived !== undefined) setNotifShowArchived(recoveryState.notifShowArchived);
     clearRecoveryState();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recoveryState]);
 
-  // Full state snapshot — saved every 5 seconds
+  // Full state snapshot — saved on every change and every 5 seconds
   const { saveRecord } = useSessionRecorder('student', activeTab, {
     search,
     filterGenre,
@@ -82,6 +88,8 @@ export default function StudentPortal() {
       book_id: readingBook.book_id, title: readingBook.title,
       author_name: readingBook.author_name, file_name: readingBook.file_name,
     } : null,
+    notifFilter,
+    notifShowArchived,
   });
 
   useEffect(() => { loadData(); }, [activeTab]);
@@ -509,7 +517,13 @@ export default function StudentPortal() {
 
         {/* Notifications Tab */}
         {activeTab === 'notifications' && (
-          <NotificationBoard categories={['borrow', 'general', 'announcement']} />
+          <NotificationBoard
+            categories={['borrow', 'general', 'announcement']}
+            filter={notifFilter}
+            onFilterChange={setNotifFilter}
+            showArchived={notifShowArchived}
+            onShowArchivedChange={setNotifShowArchived}
+          />
         )}
 
         {/* Profile Tab */}

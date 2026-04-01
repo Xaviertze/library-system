@@ -77,23 +77,24 @@ export default function AuthorPortal() {
     description: '',
   });
 
-  // Restore all state from the session record (refresh OR crash-test recovery)
+  // Notification filter state (lifted so it is included in the session record)
+  const [notifFilter, setNotifFilter] = useState({ category: '', priority: '', search: '' });
+  const [notifShowArchived, setNotifShowArchived] = useState(false);
+
+  // Restore all state from the session record
   useEffect(() => {
     if (!recoveryState) return;
     if (recoveryState.screen) setActiveTab(recoveryState.screen);
     if (recoveryState.form) setForm(recoveryState.form);
     if (recoveryState.draftId !== undefined) setDraftId(recoveryState.draftId);
+    if (recoveryState.notifFilter !== undefined) setNotifFilter(recoveryState.notifFilter);
+    if (recoveryState.notifShowArchived !== undefined) setNotifShowArchived(recoveryState.notifShowArchived);
     clearRecoveryState();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recoveryState]);
 
-  // Full state snapshot — saved every 5 seconds
-  const { saveRecord } = useSessionRecorder('author', activeTab, { form, draftId });
-
-  // Clear recovery state after it has been consumed
-  useEffect(() => {
-    if (recoveryState) clearRecoveryState();
-  }, []);
+  // Full state snapshot — saved on every change and every 5 seconds
+  const { saveRecord } = useSessionRecorder('author', activeTab, { form, draftId, notifFilter, notifShowArchived });
 
   useEffect(() => {
     if (activeTab === 'submissions') loadSubmissions();
@@ -107,26 +108,6 @@ export default function AuthorPortal() {
       setUnreadCount(data.count);
     } catch {}
   };
-
-  // Restore in-progress publish form from localStorage on page load
-  useEffect(() => {
-    const saved = localStorage.getItem('author_publish_draft');
-    if (!saved) return;
-    try {
-      const { savedForm, savedDraftId } = JSON.parse(saved);
-      if (savedForm) setForm(savedForm);
-      if (savedDraftId) setDraftId(savedDraftId);
-    } catch {}
-  }, []);
-
-  // Persist publish form + draftId to localStorage whenever they change
-  useEffect(() => {
-    if (!form.title && !form.description && !draftId) {
-      localStorage.removeItem('author_publish_draft');
-      return;
-    }
-    localStorage.setItem('author_publish_draft', JSON.stringify({ savedForm: form, savedDraftId: draftId }));
-  }, [form, draftId]);
 
   // Auto-save draft when form changes (debounced 3s)
   useEffect(() => {
@@ -241,7 +222,6 @@ export default function AuthorPortal() {
       setFile(null);
       setCoverFile(null);
       setDraftId(null);
-      localStorage.removeItem('author_publish_draft');
     } catch (err) {
       setErrors(err.response?.data?.errors || { general: 'Submission failed' });
     } finally {
@@ -259,7 +239,6 @@ export default function AuthorPortal() {
       };
       setForm(restoredForm);
       setDraftId(draft.id);
-      localStorage.setItem('author_publish_draft', JSON.stringify({ savedForm: restoredForm, savedDraftId: draft.id }));
       setActiveTab('publish');
     } catch { }
   };
@@ -659,7 +638,13 @@ export default function AuthorPortal() {
 
         {/* Notifications Tab */}
         {activeTab === 'notifications' && (
-          <NotificationBoard categories={['submissions', 'general', 'announcement']} />
+          <NotificationBoard
+            categories={['submissions', 'general', 'announcement']}
+            filter={notifFilter}
+            onFilterChange={setNotifFilter}
+            showArchived={notifShowArchived}
+            onShowArchivedChange={setNotifShowArchived}
+          />
         )}
 
         {/* Profile Tab */}

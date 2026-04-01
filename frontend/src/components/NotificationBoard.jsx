@@ -21,11 +21,24 @@ const TYPE_ICONS = {
   user_update: '👤',
 };
 
-export default function NotificationBoard({ categories }) {
+export default function NotificationBoard({
+  categories,
+  filter: filterProp,
+  onFilterChange,
+  showArchived: showArchivedProp,
+  onShowArchivedChange,
+}) {
+  const [filterInternal, setFilterInternal] = useState({ category: '', priority: '', search: '' });
+  const [showArchivedInternal, setShowArchivedInternal] = useState(false);
+
+  // Use controlled props when provided, otherwise fall back to internal state
+  const filter = filterProp !== undefined ? filterProp : filterInternal;
+  const setFilter = onFilterChange !== undefined ? onFilterChange : setFilterInternal;
+  const showArchived = showArchivedProp !== undefined ? showArchivedProp : showArchivedInternal;
+  const setShowArchived = onShowArchivedChange !== undefined ? onShowArchivedChange : setShowArchivedInternal;
+
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({ category: '', priority: '', search: '' });
-  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => { loadNotifications(); }, [filter, showArchived]);
 

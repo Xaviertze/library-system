@@ -133,19 +133,25 @@ export default function LibrarianPortal() {
   const [borrowFilters, setBorrowFilters] = useState({ search: '', status: '', date_from: '', date_to: '' });
   const [borrowLoading, setBorrowLoading] = useState(false);
 
-  // Restore all state from the session record (refresh OR crash-test recovery)
+  // Notification filter state (lifted so it is included in the session record)
+  const [notifFilter, setNotifFilter] = useState({ category: '', priority: '', search: '' });
+  const [notifShowArchived, setNotifShowArchived] = useState(false);
+
+  // Restore all state from the session record
   useEffect(() => {
     if (!recoveryState) return;
     if (recoveryState.screen)       setActiveTab(recoveryState.screen);
     if (recoveryState.filters)      setFilters(recoveryState.filters);
     if (recoveryState.userFilter)   setUserFilter(recoveryState.userFilter);
     if (recoveryState.borrowFilters) setBorrowFilters(recoveryState.borrowFilters);
+    if (recoveryState.notifFilter !== undefined) setNotifFilter(recoveryState.notifFilter);
+    if (recoveryState.notifShowArchived !== undefined) setNotifShowArchived(recoveryState.notifShowArchived);
     clearRecoveryState();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recoveryState]);
 
-  // Full state snapshot — saved every 5 seconds
-  const { saveRecord } = useSessionRecorder('librarian', activeTab, { filters, userFilter, borrowFilters });
+  // Full state snapshot — saved on every change and every 5 seconds
+  const { saveRecord } = useSessionRecorder('librarian', activeTab, { filters, userFilter, borrowFilters, notifFilter, notifShowArchived });
 
   useEffect(() => {
     if (['pending', 'all'].includes(activeTab)) loadBooks();
@@ -713,7 +719,13 @@ export default function LibrarianPortal() {
 
         {/* ========== NOTIFICATIONS ========== */}
         {activeTab === 'notifications' && (
-          <NotificationBoard categories={['submissions', 'users', 'general', 'announcement']} />
+          <NotificationBoard
+            categories={['submissions', 'users', 'general', 'announcement']}
+            filter={notifFilter}
+            onFilterChange={setNotifFilter}
+            showArchived={notifShowArchived}
+            onShowArchivedChange={setNotifShowArchived}
+          />
         )}
 
         {/* ========== PROFILE ========== */}
