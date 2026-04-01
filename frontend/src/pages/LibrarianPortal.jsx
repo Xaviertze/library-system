@@ -3,11 +3,11 @@
  * Review, approve, reject book submissions with filtering and bulk actions
  * Extended: user management, borrow records, profile, notifications, rejection reasons, preview
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import NotificationBoard from '../components/NotificationBoard';
 import ProfileEditor from '../components/ProfileEditor';
-import { useCrashRecovery, CrashTestButton } from '../components/CrashRecovery';
+import { useSessionRecorder, CrashTestButton } from '../components/CrashRecovery';
 import { useRecovery } from '../App';
 import api from '../utils/api';
 
@@ -100,7 +100,9 @@ function BookPreviewModal({ book, onClose }) {
 
 export default function LibrarianPortal() {
   const { recoveryState, clearRecoveryState } = useRecovery();
-  const [activeTab, setActiveTab] = useState(() => recoveryState?.screen || 'pending');
+
+  // Plain defaults — recovery effect below applies saved state after mount
+  const [activeTab, setActiveTab] = useState('pending');
   const [books, setBooks] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(true);
@@ -131,13 +133,19 @@ export default function LibrarianPortal() {
   const [borrowFilters, setBorrowFilters] = useState({ search: '', status: '', date_from: '', date_to: '' });
   const [borrowLoading, setBorrowLoading] = useState(false);
 
-  // Clear recovery state after it has been consumed
+  // Restore all state from the session record (refresh OR crash-test recovery)
   useEffect(() => {
-    if (recoveryState) clearRecoveryState();
-  }, []);
+    if (!recoveryState) return;
+    if (recoveryState.screen)       setActiveTab(recoveryState.screen);
+    if (recoveryState.filters)      setFilters(recoveryState.filters);
+    if (recoveryState.userFilter)   setUserFilter(recoveryState.userFilter);
+    if (recoveryState.borrowFilters) setBorrowFilters(recoveryState.borrowFilters);
+    clearRecoveryState();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recoveryState]);
 
-  // Crash recovery
-  useCrashRecovery('librarian', activeTab);
+  // Full state snapshot — saved every 5 seconds
+  const { saveRecord } = useSessionRecorder('librarian', activeTab, { filters, userFilter, borrowFilters });
 
   useEffect(() => {
     if (['pending', 'all'].includes(activeTab)) loadBooks();
@@ -355,12 +363,6 @@ export default function LibrarianPortal() {
     return map[status] || <span className="badge badge-genre">{status}</span>;
   };
 
-  const crashSave = useCallback(async () => {
-    try {
-      await api.post('/recovery/save', { screen: activeTab, portal: 'librarian', state_data: {} });
-    } catch {}
-  }, [activeTab]);
-
   const navItemsWithBadge = NAV_ITEMS.map(item => {
     if (item.id === 'notifications' && unreadCount > 0) {
       return { ...item, label: `Notifications (${unreadCount})` };
@@ -375,7 +377,7 @@ export default function LibrarianPortal() {
       <main className="main-content">
         {/* Crash Test */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-          <CrashTestButton onBeforeCrash={crashSave} />
+          <CrashTestButton onBeforeCrash={saveRecord} />
         </div>
 
         {/* ========== SUBMISSIONS TABS ========== */}

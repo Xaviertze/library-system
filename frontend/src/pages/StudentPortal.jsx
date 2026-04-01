@@ -11,7 +11,7 @@ import PDFReader from '../components/PDFReader';
 import QuickReview from '../components/QuickReview';
 import NotificationBoard from '../components/NotificationBoard';
 import ProfileEditor from '../components/ProfileEditor';
-import { useCrashRecovery } from '../components/CrashRecovery';
+import { useSessionRecorder, CrashTestButton } from '../components/CrashRecovery';
 import { useRecovery } from '../App';
 import api from '../utils/api';
 
@@ -26,17 +26,19 @@ const NAV_ITEMS = [
 export default function StudentPortal() {
   const { user, logout } = useAuth();
   const { recoveryState, clearRecoveryState } = useRecovery();
-  const [activeTab, setActiveTab] = useState(() => recoveryState?.screen || 'browse');
+
+  // Plain defaults — recovery effect below applies saved state after mount
+  const [activeTab, setActiveTab] = useState('browse');
   const [books, setBooks] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [borrows, setBorrows] = useState([]);
   const [borrowInfo, setBorrowInfo] = useState({ active_count: 0, borrow_limit: 5 });
   const [selectedBook, setSelectedBook] = useState(null);
-  const [readingBook, setReadingBook] = useState(() => recoveryState?.readingBook || null);
-  const [previewBook, setPreviewBook] = useState(null); // for quick review
-  const [search, setSearch] = useState(() => recoveryState?.search || '');
-  const [filterGenre, setFilterGenre] = useState(() => recoveryState?.filterGenre || '');
-  const [filterAvail, setFilterAvail] = useState(() => recoveryState?.filterAvail || '');
+  const [readingBook, setReadingBook] = useState(null);
+  const [previewBook, setPreviewBook] = useState(null);
+  const [search, setSearch] = useState('');
+  const [filterGenre, setFilterGenre] = useState('');
+  const [filterAvail, setFilterAvail] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [confirmReturn, setConfirmReturn] = useState(null);
@@ -49,14 +51,33 @@ export default function StudentPortal() {
   const [multiBorrowDuration, setMultiBorrowDuration] = useState(7);
   const [multiBorrowLoading, setMultiBorrowLoading] = useState(false);
 
-  // Clear recovery state after it has been consumed
+  // Restore all state from the session record (refresh OR crash-test recovery)
   useEffect(() => {
-    if (recoveryState) clearRecoveryState();
-  }, []);
+    if (!recoveryState) return;
+    if (recoveryState.screen)      setActiveTab(recoveryState.screen);
+    if (recoveryState.search      !== undefined) setSearch(recoveryState.search);
+    if (recoveryState.filterGenre !== undefined) setFilterGenre(recoveryState.filterGenre);
+    if (recoveryState.filterAvail !== undefined) setFilterAvail(recoveryState.filterAvail);
+    if (recoveryState.filterDate  !== undefined) setFilterDate(recoveryState.filterDate);
+    if (recoveryState.readingBook !== undefined) setReadingBook(recoveryState.readingBook);
+    if (recoveryState.selectedBook !== undefined) setSelectedBook(recoveryState.selectedBook);
+    if (recoveryState.multiBorrowMode !== undefined) setMultiBorrowMode(recoveryState.multiBorrowMode);
+    if (recoveryState.selectedForBorrow) setSelectedForBorrow(new Set(recoveryState.selectedForBorrow));
+    if (recoveryState.multiBorrowDuration !== undefined) setMultiBorrowDuration(recoveryState.multiBorrowDuration);
+    clearRecoveryState();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recoveryState]);
 
-  // Crash recovery — include reading book info
-  useCrashRecovery('student', activeTab, {
-    search, filterGenre, filterAvail,
+  // Full state snapshot — saved every 5 seconds
+  const { saveRecord } = useSessionRecorder('student', activeTab, {
+    search,
+    filterGenre,
+    filterAvail,
+    filterDate,
+    multiBorrowMode,
+    multiBorrowDuration,
+    selectedForBorrow: [...selectedForBorrow],
+    selectedBook: selectedBook ?? null,
     readingBook: readingBook ? {
       book_id: readingBook.book_id, title: readingBook.title,
       author_name: readingBook.author_name, file_name: readingBook.file_name,
@@ -163,6 +184,11 @@ export default function StudentPortal() {
       <Sidebar navItems={navItemsWithBadge} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <main className="main-content">
+        {/* Crash Test */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <CrashTestButton onBeforeCrash={saveRecord} />
+        </div>
+
 
         {/* Page Header */}
         <div className="page-header">

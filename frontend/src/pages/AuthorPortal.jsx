@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
 import NotificationBoard from '../components/NotificationBoard';
 import ProfileEditor from '../components/ProfileEditor';
-import { useCrashRecovery } from '../components/CrashRecovery';
+import { useSessionRecorder, CrashTestButton } from '../components/CrashRecovery';
 import { useRecovery } from '../App';
 import api from '../utils/api';
 
@@ -36,7 +36,9 @@ const STATUS_CONFIG = {
 export default function AuthorPortal() {
   const { user, logout } = useAuth();
   const { recoveryState, clearRecoveryState } = useRecovery();
-  const [activeTab, setActiveTab] = useState(() => recoveryState?.screen || 'publish');
+
+  // Plain defaults — recovery effect below applies saved state after mount
+  const [activeTab, setActiveTab] = useState('publish');
   const [submissions, setSubmissions] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -75,13 +77,23 @@ export default function AuthorPortal() {
     description: '',
   });
 
+  // Restore all state from the session record (refresh OR crash-test recovery)
+  useEffect(() => {
+    if (!recoveryState) return;
+    if (recoveryState.screen) setActiveTab(recoveryState.screen);
+    if (recoveryState.form) setForm(recoveryState.form);
+    if (recoveryState.draftId !== undefined) setDraftId(recoveryState.draftId);
+    clearRecoveryState();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recoveryState]);
+
+  // Full state snapshot — saved every 5 seconds
+  const { saveRecord } = useSessionRecorder('author', activeTab, { form, draftId });
+
   // Clear recovery state after it has been consumed
   useEffect(() => {
     if (recoveryState) clearRecoveryState();
   }, []);
-
-  // Crash recovery
-  useCrashRecovery('author', activeTab, { form, draftId });
 
   useEffect(() => {
     if (activeTab === 'submissions') loadSubmissions();
@@ -335,6 +347,11 @@ export default function AuthorPortal() {
       <Sidebar navItems={navItemsWithBadge} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <main className="main-content">
+        {/* Crash Test */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <CrashTestButton onBeforeCrash={saveRecord} />
+        </div>
+
         {/* Publish Tab */}
         {activeTab === 'publish' && (
           <div style={{ maxWidth: 700 }}>
