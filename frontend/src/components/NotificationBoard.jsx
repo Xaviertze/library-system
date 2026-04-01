@@ -21,11 +21,9 @@ const TYPE_ICONS = {
   user_update: '👤',
 };
 
-export default function NotificationBoard({ categories }) {
+export default function NotificationBoard({ categories, filter, onFilterChange, showArchived, onShowArchivedChange }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({ category: '', priority: '', search: '' });
-  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => { loadNotifications(); }, [filter, showArchived]);
 
@@ -78,22 +76,22 @@ export default function NotificationBoard({ categories }) {
       {/* Filter Bar */}
       <div className="filter-bar">
         <input className="form-input" placeholder="Search notifications…"
-          value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))} />
+          value={filter.search} onChange={e => onFilterChange(f => ({ ...f, search: e.target.value }))} />
         {categories && (
           <select className="form-select" value={filter.category}
-            onChange={e => setFilter(f => ({ ...f, category: e.target.value }))} style={{ flex: '0 0 160px' }}>
+            onChange={e => onFilterChange(f => ({ ...f, category: e.target.value }))} style={{ flex: '0 0 160px' }}>
             <option value="">All Categories</option>
             {categories.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
           </select>
         )}
         <select className="form-select" value={filter.priority}
-          onChange={e => setFilter(f => ({ ...f, priority: e.target.value }))} style={{ flex: '0 0 140px' }}>
+          onChange={e => onFilterChange(f => ({ ...f, priority: e.target.value }))} style={{ flex: '0 0 140px' }}>
           <option value="">All Priority</option>
           <option value="urgent">Urgent</option>
           <option value="normal">Normal</option>
         </select>
         <button className={`btn btn-sm ${showArchived ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => setShowArchived(!showArchived)}>
+          onClick={() => onShowArchivedChange(!showArchived)}>
           {showArchived ? 'Showing Archived' : 'Show Archived'}
         </button>
         {unreadCount > 0 && (

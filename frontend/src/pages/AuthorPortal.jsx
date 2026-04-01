@@ -77,23 +77,28 @@ export default function AuthorPortal() {
     description: '',
   });
 
+  // Notification filter state (controlled, for snapshot)
+  const [notifFilter, setNotifFilter] = useState({ search: '', category: '', priority: '' });
+  const [notifShowArchived, setNotifShowArchived] = useState(false);
+
+  // Profile editor state (reported by ProfileEditor, for snapshot)
+  const [profileState, setProfileState] = useState({ editMode: false, form: {} });
+
   // Restore all state from the session record (refresh OR crash-test recovery)
   useEffect(() => {
     if (!recoveryState) return;
     if (recoveryState.screen) setActiveTab(recoveryState.screen);
     if (recoveryState.form) setForm(recoveryState.form);
     if (recoveryState.draftId !== undefined) setDraftId(recoveryState.draftId);
+    if (recoveryState.notifFilter !== undefined) setNotifFilter(recoveryState.notifFilter);
+    if (recoveryState.notifShowArchived !== undefined) setNotifShowArchived(recoveryState.notifShowArchived);
+    if (recoveryState.profileState !== undefined) setProfileState(recoveryState.profileState);
     clearRecoveryState();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recoveryState]);
 
   // Full state snapshot — saved every 5 seconds
-  const { saveRecord } = useSessionRecorder('author', activeTab, { form, draftId });
-
-  // Clear recovery state after it has been consumed
-  useEffect(() => {
-    if (recoveryState) clearRecoveryState();
-  }, []);
+  const { saveRecord } = useSessionRecorder('author', activeTab, { form, draftId, notifFilter, notifShowArchived, profileState });
 
   useEffect(() => {
     if (activeTab === 'submissions') loadSubmissions();
@@ -659,7 +664,13 @@ export default function AuthorPortal() {
 
         {/* Notifications Tab */}
         {activeTab === 'notifications' && (
-          <NotificationBoard categories={['submissions', 'general', 'announcement']} />
+          <NotificationBoard
+            categories={['submissions', 'general', 'announcement']}
+            filter={notifFilter}
+            onFilterChange={setNotifFilter}
+            showArchived={notifShowArchived}
+            onShowArchivedChange={setNotifShowArchived}
+          />
         )}
 
         {/* Profile Tab */}
@@ -667,6 +678,8 @@ export default function AuthorPortal() {
           <ProfileEditor
             showFields={['full_name', 'password', 'bio', 'profile_picture']}
             onPasswordChanged={logout}
+            recoveryData={profileState}
+            onStateChange={setProfileState}
           />
         )}
       </main>

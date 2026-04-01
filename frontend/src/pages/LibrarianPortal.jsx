@@ -133,6 +133,13 @@ export default function LibrarianPortal() {
   const [borrowFilters, setBorrowFilters] = useState({ search: '', status: '', date_from: '', date_to: '' });
   const [borrowLoading, setBorrowLoading] = useState(false);
 
+  // Notification filter state (controlled, for snapshot)
+  const [notifFilter, setNotifFilter] = useState({ search: '', category: '', priority: '' });
+  const [notifShowArchived, setNotifShowArchived] = useState(false);
+
+  // Profile editor state (reported by ProfileEditor, for snapshot)
+  const [profileState, setProfileState] = useState({ editMode: false, form: {} });
+
   // Restore all state from the session record (refresh OR crash-test recovery)
   useEffect(() => {
     if (!recoveryState) return;
@@ -140,12 +147,15 @@ export default function LibrarianPortal() {
     if (recoveryState.filters)      setFilters(recoveryState.filters);
     if (recoveryState.userFilter)   setUserFilter(recoveryState.userFilter);
     if (recoveryState.borrowFilters) setBorrowFilters(recoveryState.borrowFilters);
+    if (recoveryState.notifFilter !== undefined) setNotifFilter(recoveryState.notifFilter);
+    if (recoveryState.notifShowArchived !== undefined) setNotifShowArchived(recoveryState.notifShowArchived);
+    if (recoveryState.profileState !== undefined) setProfileState(recoveryState.profileState);
     clearRecoveryState();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recoveryState]);
 
   // Full state snapshot — saved every 5 seconds
-  const { saveRecord } = useSessionRecorder('librarian', activeTab, { filters, userFilter, borrowFilters });
+  const { saveRecord } = useSessionRecorder('librarian', activeTab, { filters, userFilter, borrowFilters, notifFilter, notifShowArchived, profileState });
 
   useEffect(() => {
     if (['pending', 'all'].includes(activeTab)) loadBooks();
@@ -713,12 +723,22 @@ export default function LibrarianPortal() {
 
         {/* ========== NOTIFICATIONS ========== */}
         {activeTab === 'notifications' && (
-          <NotificationBoard categories={['submissions', 'users', 'general', 'announcement']} />
+          <NotificationBoard
+            categories={['submissions', 'users', 'general', 'announcement']}
+            filter={notifFilter}
+            onFilterChange={setNotifFilter}
+            showArchived={notifShowArchived}
+            onShowArchivedChange={setNotifShowArchived}
+          />
         )}
 
         {/* ========== PROFILE ========== */}
         {activeTab === 'profile' && (
-          <ProfileEditor showFields={['full_name', 'password', 'employee_id', 'profile_picture']} />
+          <ProfileEditor
+            showFields={['full_name', 'password', 'employee_id', 'profile_picture']}
+            recoveryData={profileState}
+            onStateChange={setProfileState}
+          />
         )}
       </main>
 

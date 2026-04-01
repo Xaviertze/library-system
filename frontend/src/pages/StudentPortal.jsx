@@ -51,6 +51,13 @@ export default function StudentPortal() {
   const [multiBorrowDuration, setMultiBorrowDuration] = useState(7);
   const [multiBorrowLoading, setMultiBorrowLoading] = useState(false);
 
+  // Notification filter state (controlled, for snapshot)
+  const [notifFilter, setNotifFilter] = useState({ search: '', category: '', priority: '' });
+  const [notifShowArchived, setNotifShowArchived] = useState(false);
+
+  // Profile editor state (reported by ProfileEditor, for snapshot)
+  const [profileState, setProfileState] = useState({ editMode: false, form: {} });
+
   // Restore all state from the session record (refresh OR crash-test recovery)
   useEffect(() => {
     if (!recoveryState) return;
@@ -64,6 +71,9 @@ export default function StudentPortal() {
     if (recoveryState.multiBorrowMode !== undefined) setMultiBorrowMode(recoveryState.multiBorrowMode);
     if (recoveryState.selectedForBorrow) setSelectedForBorrow(new Set(recoveryState.selectedForBorrow));
     if (recoveryState.multiBorrowDuration !== undefined) setMultiBorrowDuration(recoveryState.multiBorrowDuration);
+    if (recoveryState.notifFilter !== undefined) setNotifFilter(recoveryState.notifFilter);
+    if (recoveryState.notifShowArchived !== undefined) setNotifShowArchived(recoveryState.notifShowArchived);
+    if (recoveryState.profileState !== undefined) setProfileState(recoveryState.profileState);
     clearRecoveryState();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recoveryState]);
@@ -82,6 +92,9 @@ export default function StudentPortal() {
       book_id: readingBook.book_id, title: readingBook.title,
       author_name: readingBook.author_name, file_name: readingBook.file_name,
     } : null,
+    notifFilter,
+    notifShowArchived,
+    profileState,
   });
 
   useEffect(() => { loadData(); }, [activeTab]);
@@ -505,7 +518,13 @@ export default function StudentPortal() {
 
         {/* Notifications Tab */}
         {activeTab === 'notifications' && (
-          <NotificationBoard categories={['borrow', 'general', 'announcement']} />
+          <NotificationBoard
+            categories={['borrow', 'general', 'announcement']}
+            filter={notifFilter}
+            onFilterChange={setNotifFilter}
+            showArchived={notifShowArchived}
+            onShowArchivedChange={setNotifShowArchived}
+          />
         )}
 
         {/* Profile Tab */}
@@ -513,6 +532,8 @@ export default function StudentPortal() {
           <ProfileEditor
             showFields={['full_name', 'password', 'profile_picture']}
             onPasswordChanged={logout}
+            recoveryData={profileState}
+            onStateChange={setProfileState}
           />
         )}
       </main>

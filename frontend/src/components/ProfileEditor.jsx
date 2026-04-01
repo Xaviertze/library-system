@@ -34,7 +34,7 @@ function PasswordStrength({ password }) {
   );
 }
 
-export default function ProfileEditor({ showFields = ['full_name', 'password'], onPasswordChanged }) {
+export default function ProfileEditor({ showFields = ['full_name', 'password'], onPasswordChanged, recoveryData, onStateChange }) {
   const { user, logout } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -44,17 +44,38 @@ export default function ProfileEditor({ showFields = ['full_name', 'password'], 
   const [error, setError] = useState('');
   const fileInputRef = useRef(null);
 
+  // Track recoveryData synchronously so loadProfile (async) always sees the latest value
+  const recovRef = useRef(recoveryData);
+  recovRef.current = recoveryData;
+
   const [form, setForm] = useState({ full_name: '', bio: '', employee_id: '', current_password: '' });
   const [pwForm, setPwForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
 
   useEffect(() => { loadProfile(); }, []);
+
+  // Report editMode + non-password form fields to parent for session snapshot
+  useEffect(() => {
+    onStateChange?.({
+      editMode,
+      form: { full_name: form.full_name, bio: form.bio, employee_id: form.employee_id },
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMode, form.full_name, form.bio, form.employee_id]);
 
   const loadProfile = async () => {
     setLoading(true);
     try {
       const { data } = await api.get('/users/profile');
       setProfile(data);
-      setForm({ full_name: data.full_name, bio: data.bio || '', employee_id: data.employee_id || '', current_password: '' });
+      const apiForm = { full_name: data.full_name, bio: data.bio || '', employee_id: data.employee_id || '', current_password: '' };
+      const recov = recovRef.current;
+      if (recov?.form) {
+        // Restore user's typed values on top of API data, never restore passwords
+        setForm({ ...apiForm, ...recov.form, current_password: '' });
+        if (recov.editMode) setEditMode(true);
+      } else {
+        setForm(apiForm);
+      }
     } finally {
       setLoading(false);
     }

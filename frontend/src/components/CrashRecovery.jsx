@@ -34,12 +34,10 @@ const SAVE_INTERVAL = 5000; // 5 seconds
 export function useSessionRecorder(portal, activeTab, stateSnapshot) {
   const { user } = useAuth();
   const timerRef = useRef(null);
-  // Ref so interval/beforeunload handlers always see the latest state
-  // without needing to re-register on every render.
+  // Assign synchronously during render so saveRecord() always sees the very
+  // latest values — even if called from beforeunload before effects have run.
   const latestRef = useRef({ portal, activeTab, stateSnapshot });
-  useEffect(() => {
-    latestRef.current = { portal, activeTab, stateSnapshot };
-  });
+  latestRef.current = { portal, activeTab, stateSnapshot };
 
   const saveRecord = useCallback(() => {
     if (!user) return;
