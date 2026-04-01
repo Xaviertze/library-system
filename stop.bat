@@ -13,9 +13,9 @@ taskkill /FI "WINDOWTITLE eq BiblioVault - Backend" /T /F >nul 2>&1
 echo Closing Frontend server window...
 taskkill /FI "WINDOWTITLE eq BiblioVault - Frontend" /T /F >nul 2>&1
 
-:: Belt-and-suspenders: kill any node process still holding ports 5000 or 3000
-for /f "tokens=5" %%a in ('netstat -ano 2^>nul ^| findstr ":5000 " ^| findstr "LISTENING"') do (
-    echo Releasing port 5000 ^(PID %%a^)...
+:: Belt-and-suspenders: kill any node process still holding ports 8000 or 3000
+for /f "tokens=5" %%a in ('netstat -ano 2^>nul ^| findstr ":8000 " ^| findstr "LISTENING"') do (
+    echo Releasing port 8000 ^(PID %%a^)...
     taskkill /PID %%a /T /F >nul 2>&1
 )
 for /f "tokens=5" %%a in ('netstat -ano 2^>nul ^| findstr ":3000 " ^| findstr "LISTENING"') do (
