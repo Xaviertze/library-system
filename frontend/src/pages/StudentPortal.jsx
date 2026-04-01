@@ -98,8 +98,12 @@ export default function StudentPortal() {
     setLoading(true);
     try {
       if (activeTab === 'browse') {
-        const { data } = await api.get('/books');
-        setBooks(data);
+        const [booksRes, borrowsRes] = await Promise.all([
+          api.get('/books'),
+          api.get('/books/my-borrows'),
+        ]);
+        setBooks(booksRes.data);
+        setBorrowInfo({ active_count: borrowsRes.data.active_count || 0, borrow_limit: borrowsRes.data.borrow_limit || 5 });
       } else if (activeTab === 'recommendations') {
         const { data } = await api.get('/books/recommendations');
         setRecommendations(data);

@@ -183,13 +183,12 @@ export default function PDFReader({ book, onClose }) {
     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
     pageDiv.appendChild(canvas);
 
-    // Text layer
+    // Text layer — pdfjs v4 setLayerDimensions needs --scale-factor to compute
+    // correct width/height; without it the layer collapses to 0×0.
     const textLayerDiv = document.createElement('div');
     textLayerDiv.className = 'pdf-text-layer';
-    textLayerDiv.style.cssText = `
-      position: absolute; top: 0; left: 0;
-      width: ${viewport.width}px; height: ${viewport.height}px;
-    `;
+    textLayerDiv.style.cssText = `position: absolute; top: 0; left: 0;`;
+    textLayerDiv.style.setProperty('--scale-factor', SCALE);
     const textContent = await page.getTextContent();
     await pdfjsLib.renderTextLayer({
       textContentSource: textContent,
