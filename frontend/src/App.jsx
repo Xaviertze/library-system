@@ -129,11 +129,6 @@ function CrashRecoveryWrapper({ children }) {
       // Crash test: record was intentionally preserved — restore it
       localStorage.removeItem(SHOULD_CLEAR_KEY);
       tryRestore(user.id, 'Session recovered after crash test');
-    } else if (shouldClearUserId === String(user.id)) {
-      // Manual tab close: the scheduled cleanup fires now
-      localStorage.removeItem(RECORD_KEY(user.id));
-      localStorage.removeItem(SHOULD_CLEAR_KEY);
-      // No recovery — fresh start
     } else {
       // Actual crash (no flags): record survived, restore it
       localStorage.removeItem(SHOULD_CLEAR_KEY);
