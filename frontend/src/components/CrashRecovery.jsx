@@ -108,7 +108,7 @@ export function CrashTestButton({ onBeforeCrash }) {
       // Do NOT call onBeforeCrash and do NOT write to localStorage —
       // the button click itself must not be recorded as a recoverable action.
       try {
-          await fetch('http://localhost:5000/api/shutdown', { method: 'POST' });
+          await fetch('http://localhost:8000/api/shutdown', { method: 'POST' });
       } catch {
           // Expected: the server may close the connection before sending a response
       }

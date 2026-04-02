@@ -7,11 +7,11 @@ echo ============================================
 echo.
 
 :: Check if backend is already running
-netstat -ano | findstr ":5000 " | findstr "LISTENING" >nul 2>&1
+netstat -ano | findstr ":8000 " | findstr "LISTENING" >nul 2>&1
 if %ERRORLEVEL%==0 (
     echo [WARN] Port 8000 is already in use. Backend may already be running.
 ) else (
-    echo [1/2] Starting Backend  ^(http://localhost:5000^)...
+    echo [1/2] Starting Backend  ^(http://localhost:8000^)...
     start "BiblioVault - Backend" cmd /k "cd /d %~dp0backend && npm start"
 )
 
@@ -30,7 +30,7 @@ if %ERRORLEVEL%==0 (
 echo.
 echo ============================================
 echo   Both servers are starting up.
-echo   Backend  : http://localhost:5000
+echo   Backend  : http://localhost:8000
 echo   Frontend : http://localhost:3000
 echo.
 echo   Closing either server window will stop
