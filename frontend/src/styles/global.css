@@ -993,6 +993,9 @@ input[type="range"] {
 .pdf-text-layer ::selection {
   background: rgba(201, 168, 76, 0.4);
 }
+.pdf-text-layer .highlight {
+  background-color: rgba(255, 255, 0, 0.4);
+}
 .pdf-page-label {
   position: absolute;
   bottom: -22px;

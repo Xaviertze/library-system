@@ -14,6 +14,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 const SCALE = 1.5;
 
+const hexToRgba = (hex, alpha) => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 export default function PDFReader({ book, onClose }) {
   const [bookmarks, setBookmarks] = useState([]);
   const [highlights, setHighlights] = useState([]);
@@ -36,6 +43,7 @@ export default function PDFReader({ book, onClose }) {
   const pageElemsRef = useRef({});
   const observerRef = useRef(null);
   const highlightsRef = useRef([]);
+  const textLayerReadyRef = useRef(new Set());
 
   useEffect(() => { highlightsRef.current = highlights; }, [highlights]);
 
@@ -197,12 +205,16 @@ export default function PDFReader({ book, onClose }) {
     }).promise;
     pageDiv.appendChild(textLayerDiv);
 
+    // Mark text layer as ready AFTER it is fully rendered and in the DOM
+    textLayerReadyRef.current.add(pageNum);
+
     // Page label
     const label = document.createElement('div');
     label.className = 'pdf-page-label';
     label.textContent = `Page ${pageNum}`;
     pageDiv.appendChild(label);
 
+    // Apply highlights ONLY after textLayer is fully rendered
     applyHighlightsToPage(pageNum, textLayerDiv);
   };
 
@@ -210,9 +222,25 @@ export default function PDFReader({ book, onClose }) {
     const pageHighlights = highlightsRef.current.filter(h => h.page_number === pageNum);
     if (pageHighlights.length === 0) return;
     const spans = textLayerDiv.querySelectorAll('span');
+    const color = (hex) => hexToRgba(hex || '#c9a84c', 0.4);
+
     for (const hl of pageHighlights) {
       const hlText = hl.text_content.toLowerCase();
-      // Build combined text to find multi-span highlights
+
+      // Try single-span match first
+      let matched = false;
+      for (const span of spans) {
+        const text = span.textContent?.toLowerCase();
+        if (text && text.includes(hlText)) {
+          span.style.backgroundColor = color(hl.color);
+          span.style.borderRadius = '2px';
+          matched = true;
+          break; // Only first occurrence
+        }
+      }
+      if (matched) continue;
+
+      // Multi-span matching — only highlight spans that contribute to the match
       let accumulated = '';
       const matchSpans = [];
       for (const span of spans) {
@@ -221,15 +249,19 @@ export default function PDFReader({ book, onClose }) {
         accumulated += t;
         matchSpans.push(span);
         if (accumulated.toLowerCase().includes(hlText)) {
-          // Highlight all accumulated spans that are part of the match
+          const matchStart = accumulated.toLowerCase().indexOf(hlText);
+          const matchEnd = matchStart + hlText.length;
+          let pos = 0;
           for (const ms of matchSpans) {
-            ms.style.backgroundColor = hl.color || '#c9a84c';
-            ms.style.borderRadius = '2px';
+            const spanEnd = pos + ms.textContent.length;
+            if (spanEnd > matchStart && pos < matchEnd) {
+              ms.style.backgroundColor = color(hl.color);
+              ms.style.borderRadius = '2px';
+            }
+            pos = spanEnd;
           }
-          accumulated = '';
-          matchSpans.length = 0;
+          break; // Only first occurrence
         }
-        // If accumulated gets too long without matching, slide forward
         if (accumulated.length > hlText.length * 3) {
           matchSpans.shift();
           accumulated = matchSpans.map(s => s.textContent).join('');
@@ -238,9 +270,9 @@ export default function PDFReader({ book, onClose }) {
     }
   };
 
-  // Re-apply highlights when highlights list changes
+  // Re-apply highlights when highlights list changes — only on pages with ready text layers
   useEffect(() => {
-    for (const pageNum of renderedPagesRef.current) {
+    for (const pageNum of textLayerReadyRef.current) {
       const pageDiv = pageElemsRef.current[pageNum];
       if (!pageDiv) continue;
       const textLayer = pageDiv.querySelector('.pdf-text-layer');
@@ -314,7 +346,23 @@ export default function PDFReader({ book, onClose }) {
   };
 
   const highlightSelection = () => {
-    if (selectedText) addHighlight(selectedText, currentPage, highlightColor);
+    if (!selectedText) return;
+
+    // Wrap ONLY the selected content using DOM range
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      try {
+        const span = document.createElement('span');
+        span.className = 'highlight';
+        span.style.backgroundColor = hexToRgba(highlightColor, 0.4);
+        range.surroundContents(span);
+      } catch {
+        // Cross-element selection; highlight is saved and applied on re-render
+      }
+    }
+
+    addHighlight(selectedText, currentPage, highlightColor);
   };
 
   const removeHighlight = async (id) => {
