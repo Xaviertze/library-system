@@ -105,10 +105,13 @@ export function CrashTestButton({ onBeforeCrash }) {
   const [confirming, setConfirming] = useState(false);
 
   const simulateCrash = async () => {
-    if (onBeforeCrash) await onBeforeCrash();
-    // Preserve the record across the close (simulate an unexpected crash)
-    localStorage.setItem(CRASH_TEST_CLOSE_KEY, '1');
-    window.close();
+      // Do NOT call onBeforeCrash and do NOT write to localStorage —
+      // the button click itself must not be recorded as a recoverable action.
+      try {
+          await fetch('http://localhost:5000/api/shutdown', { method: 'POST' });
+      } catch {
+          // Expected: the server may close the connection before sending a response
+      }
   };
 
   if (confirming) {

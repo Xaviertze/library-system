@@ -33,6 +33,12 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Crash-test shutdown endpoint – stops the server process
+app.post('/api/shutdown', (req, res) => {
+    res.json({ message: 'Server shutting down' });
+    process.exit(0);
+});
+
 // --- 404 Handler ---
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
