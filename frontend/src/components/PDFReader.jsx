@@ -170,121 +170,139 @@ export default function PDFReader({ book, onClose }) {
     }
     setCurrentPage(closestPage);
   }, []);
+  
+    const renderPage = async (pageNum) => {
+        const pdf = pdfDocRef.current;
+        if (!pdf || renderedPagesRef.current.has(pageNum)) return;
+        renderedPagesRef.current.add(pageNum);
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: SCALE });
+        const pageDiv = pageElemsRef.current[pageNum];
+        if (!pageDiv) return;
+        pageDiv.innerHTML = '';
 
-  const renderPage = async (pageNum) => {
-    const pdf = pdfDocRef.current;
-    if (!pdf || renderedPagesRef.current.has(pageNum)) return;
-    renderedPagesRef.current.add(pageNum);
+        // Canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.style.display = 'block';
+        canvas.style.pointerEvents = 'none';
+        canvas.style.position = 'relative';  // ← add
+        canvas.style.zIndex = '1';    
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        pageDiv.appendChild(canvas);
 
-    const page = await pdf.getPage(pageNum);
-    const viewport = page.getViewport({ scale: SCALE });
-    const pageDiv = pageElemsRef.current[pageNum];
-    if (!pageDiv) return;
-
-    pageDiv.innerHTML = '';
-
-    // Canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    canvas.style.display = 'block';
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    pageDiv.appendChild(canvas);
-
-    // Text layer — pdfjs v4 setLayerDimensions needs --scale-factor to compute
-    // correct width/height; without it the layer collapses to 0×0.
-    const textLayerDiv = document.createElement('div');
-    textLayerDiv.className = 'pdf-text-layer';
-    textLayerDiv.style.cssText = `position: absolute; top: 0; left: 0;`;
-    textLayerDiv.style.setProperty('--scale-factor', SCALE);
-    const textContent = await page.getTextContent();
-    await pdfjsLib.renderTextLayer({
-      textContentSource: textContent,
-      container: textLayerDiv,
-      viewport,
-    }).promise;
-    pageDiv.appendChild(textLayerDiv);
-
-    // Mark text layer as ready AFTER it is fully rendered and in the DOM
-    textLayerReadyRef.current.add(pageNum);
-
-    // Page label
-    const label = document.createElement('div');
-    label.className = 'pdf-page-label';
-    label.textContent = `Page ${pageNum}`;
-    pageDiv.appendChild(label);
-
-    // Apply highlights ONLY after textLayer is fully rendered
-    applyHighlightsToPage(pageNum, textLayerDiv);
-  };
-
-  const applyHighlightsToPage = (pageNum, textLayerDiv) => {
-    const pageHighlights = highlightsRef.current.filter(h => h.page_number === pageNum);
-    if (pageHighlights.length === 0) return;
-    const spans = textLayerDiv.querySelectorAll('span');
-    const color = (hex) => hexToRgba(hex || '#c9a84c', 0.4);
-
-    for (const hl of pageHighlights) {
-      const hlText = hl.text_content.toLowerCase();
-
-      // Try single-span match first
-      let matched = false;
-      for (const span of spans) {
-        const text = span.textContent?.toLowerCase();
-        if (text && text.includes(hlText)) {
-          span.style.backgroundColor = color(hl.color);
-          span.style.borderRadius = '2px';
-          matched = true;
-          break; // Only first occurrence
+        // Text layer
+        try {
+            const textLayerDiv = document.createElement('div');
+            textLayerDiv.className = 'pdf-text-layer';
+            textLayerDiv.style.cssText = `position: absolute; top: 0; left: 0; 
+            width: ${viewport.width}px; height: ${viewport.height}px;z-index: 2;`;
+            textLayerDiv.style.setProperty('--scale-factor', SCALE);
+            const textContent = await page.getTextContent();
+            const textLayer = new pdfjsLib.TextLayer({
+                textContentSource: textContent,
+                container: textLayerDiv,
+                viewport,
+            });
+            await textLayer.render();
+            pageDiv.appendChild(textLayerDiv);
+            textLayerReadyRef.current.add(pageNum);
+            await new Promise(resolve => setTimeout(resolve, 150));
+            applyHighlightsToPage(pageNum, textLayerDiv);
+        } catch (err) {
+            console.error('Text layer error page', pageNum, err);
         }
-      }
-      if (matched) continue;
 
-      // Multi-span matching — only highlight spans that contribute to the match
-      let accumulated = '';
-      const matchSpans = [];
-      for (const span of spans) {
-        const t = span.textContent;
-        if (!t) continue;
-        accumulated += t;
-        matchSpans.push(span);
-        if (accumulated.toLowerCase().includes(hlText)) {
-          const matchStart = accumulated.toLowerCase().indexOf(hlText);
-          const matchEnd = matchStart + hlText.length;
-          let pos = 0;
-          for (const ms of matchSpans) {
-            const spanEnd = pos + ms.textContent.length;
-            if (spanEnd > matchStart && pos < matchEnd) {
-              ms.style.backgroundColor = color(hl.color);
-              ms.style.borderRadius = '2px';
+        // Page label
+        const label = document.createElement('div');
+        label.className = 'pdf-page-label';
+        label.textContent = `Page ${pageNum}`;
+        pageDiv.appendChild(label);
+    };
+
+    const applyHighlightsToPage = (pageNum, textLayerDiv) => {
+        const pageHighlights = highlightsRef.current.filter(h => h.page_number === pageNum);
+        if (pageHighlights.length === 0) return;
+        const spans = Array.from(textLayerDiv.querySelectorAll('span'));
+        const color = (hex) => hexToRgba(hex || '#c9a84c', 0.6);
+
+        // Step 1: Build a single string from all spans, tracking each span's position
+        const spanData = [];
+        let fullText = '';
+        for (const span of spans) {
+            const raw = span.textContent || '';
+            if (!raw) continue;
+            const start = fullText.length;
+            fullText += raw;
+            spanData.push({ span, start, end: fullText.length });
+            // Add space between spans to handle word boundaries across spans
+            fullText += ' ';
+        }
+
+        // Step 2: Create normalized version and a mapping array
+        // normMap[i] = index in fullText that corresponds to normText[i]
+        const normMap = [];
+        let normText = '';
+        for (let i = 0; i < fullText.length; i++) {
+            const ch = fullText[i];
+            if (/\s/.test(ch)) {
+                // Collapse all whitespace to single space
+                if (normText.length > 0 && normText[normText.length - 1] !== ' ') {
+                    normMap.push(i);
+                    normText += ' ';
+                }
+            } else {
+                normMap.push(i);
+                normText += ch.toLowerCase();
             }
-            pos = spanEnd;
-          }
-          break; // Only first occurrence
         }
-        if (accumulated.length > hlText.length * 3) {
-          matchSpans.shift();
-          accumulated = matchSpans.map(s => s.textContent).join('');
-        }
-      }
-    }
-  };
+        normText = normText.trim();
 
+        // Step 3: For each highlight, find it in normText and map back to spans
+        for (const hl of pageHighlights) {
+            const hlNorm = hl.text_content
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLowerCase();
+
+            if (!hlNorm) continue;
+
+            let searchFrom = 0;
+            const matchStart = normText.indexOf(hlNorm, searchFrom);
+            if (matchStart === -1) continue;
+            const matchEnd = matchStart + hlNorm.length;
+
+            // Map normalized match positions back to fullText positions
+            const rawMatchStart = normMap[matchStart];
+            const rawMatchEnd = normMap[Math.min(matchEnd - 1, normMap.length - 1)] + 1;
+
+            // Step 4: Highlight spans that overlap [rawMatchStart, rawMatchEnd)
+            for (const { span, start, end } of spanData) {
+                if (end > rawMatchStart && start < rawMatchEnd) {
+                    span.style.backgroundColor = color(hl.color);
+                    span.style.borderRadius = '2px';
+                }
+            }
+        }
+    };
+  
   // Re-apply highlights when highlights list changes — only on pages with ready text layers
-  useEffect(() => {
-    for (const pageNum of textLayerReadyRef.current) {
-      const pageDiv = pageElemsRef.current[pageNum];
-      if (!pageDiv) continue;
-      const textLayer = pageDiv.querySelector('.pdf-text-layer');
-      if (!textLayer) continue;
-      // Reset
-      textLayer.querySelectorAll('span').forEach(s => {
-        s.style.backgroundColor = '';
-        s.style.borderRadius = '';
-      });
-      applyHighlightsToPage(pageNum, textLayer);
-    }
-  }, [highlights]);
+    useEffect(() => {
+        setTimeout(() => {  // ← wrap in setTimeout
+            for (const pageNum of textLayerReadyRef.current) {
+                const pageDiv = pageElemsRef.current[pageNum];
+                if (!pageDiv) continue;
+                const textLayer = pageDiv.querySelector('.pdf-text-layer');
+                if (!textLayer) continue;
+                textLayer.querySelectorAll('span').forEach(s => {
+                    s.style.backgroundColor = '';
+                    s.style.borderRadius = '';
+                });
+                applyHighlightsToPage(pageNum, textLayer);
+            }
+        }, 50);
+    }, [highlights]);
 
   const goToPage = (pageNum) => {
     const p = Math.max(1, Math.min(pageNum, totalPages));
@@ -329,7 +347,7 @@ export default function PDFReader({ book, onClose }) {
   const addHighlight = async (text, page, color) => {
     const t = text || newHighlight.text;
     const p = page || newHighlight.page;
-    const c = color || newHighlight.color;
+    const c = color !== undefined ? color : newHighlight.color; // ← explicit check
     if (!p || !t) return;
     try {
       await api.post(`/books/${book.book_id}/highlights`, {
@@ -348,19 +366,21 @@ export default function PDFReader({ book, onClose }) {
   const highlightSelection = () => {
     if (!selectedText) return;
 
-    // Wrap ONLY the selected content using DOM range
+      // Wrap ONLY the selected content using DOM range
+    /*
     const selection = window.getSelection();
     if (selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
       try {
         const span = document.createElement('span');
         span.className = 'highlight';
-        span.style.backgroundColor = hexToRgba(highlightColor, 0.4);
+        span.style.backgroundColor = hexToRgba(highlightColor, 0.6);
         range.surroundContents(span);
       } catch {
         // Cross-element selection; highlight is saved and applied on re-render
       }
     }
+    */
 
     addHighlight(selectedText, currentPage, highlightColor);
   };
@@ -424,7 +444,7 @@ export default function PDFReader({ book, onClose }) {
               style={{ fontSize: '1.1rem', padding: '4px 8px', lineHeight: 1 }}>
               {isFullscreen ? '\u2291' : '\u229E'}
             </button>
-            <button className="modal-close" onClick={onClose} title="Close (Esc)">\u2715</button>
+            <button className="modal-close" onClick={onClose} title="Close (Esc)">{'\u2715'}</button>
           </div>
         </div>
 

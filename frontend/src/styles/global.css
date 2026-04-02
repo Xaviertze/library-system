@@ -1006,6 +1006,11 @@ input[type="range"] {
   white-space: nowrap;
 }
 
+.pdf-page-container {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
 /* ---- Table responsive improvements ---- */
 @media (max-width: 768px) {
   .filter-bar {

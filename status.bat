@@ -7,11 +7,11 @@ echo ============================================
 echo.
 
 :: Check Backend (port 8000)
-netstat -ano | findstr ":8000 " | findstr "LISTENING" >nul 2>&1
+netstat -ano | findstr ":5000 " | findstr "LISTENING" >nul 2>&1
 if %ERRORLEVEL%==0 (
-    echo [RUNNING]  Backend   http://localhost:8000
+    echo [RUNNING]  Backend   http://localhost:5000
 ) else (
-    echo [STOPPED]  Backend   http://localhost:8000
+    echo [STOPPED]  Backend   http://localhost:5000
 )
 
 :: Check Frontend (port 3000)

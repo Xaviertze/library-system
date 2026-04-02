@@ -86,7 +86,7 @@ const uploadFields = upload.fields([
 router.get('/', authenticate, (req, res) => {
   const books = db.prepare(`
     SELECT b.id, b.title, b.author_name, b.genre, b.description,
-           b.availability, b.publish_date, b.times_borrowed, b.cover_image
+           b.availability, b.publish_date, b.times_borrowed, b.cover_image,b.file_name
     FROM books b
     WHERE b.status = 'approved'
     ORDER BY b.publish_date DESC
